@@ -239,6 +239,27 @@ textarea { resize: vertical; }
   margin-top: 8px;
 }
 
+/* Completeness banner */
+.completeness-card { padding: 16px 22px; }
+.completeness-pct {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--accent);
+}
+.completeness-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0 6px;
+}
+.completeness-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.25s ease;
+}
+
 /* Sticky footer */
 .sticky-footer {
   position: fixed;

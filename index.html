@@ -9,16 +9,25 @@
 <body>
   <header class="app-header">
     <div class="brand">Profile Builder</div>
-    <p class="subtitle">Fill in whatever you know, in any order. Nothing is forced &mdash; leave a field
-       open, or mark it as a lean if you're not fully decided.</p>
+    <p class="subtitle">Structured fields where it matters, so this stays usable for filtering and matching later.
+       Free text is still there where nothing else makes sense &mdash; it just gets flagged, not silently trusted.</p>
   </header>
 
   <main id="app">
 
+    <div class="card completeness-card">
+      <div class="field-label-row">
+        <h3 style="margin:0;">Profile completeness</h3>
+        <span id="completeness-pct" class="completeness-pct">0%</span>
+      </div>
+      <div class="completeness-bar"><div id="completeness-fill" class="completeness-fill"></div></div>
+      <p id="completeness-hint" class="muted" style="margin-bottom:0;"></p>
+    </div>
+
     <div class="card">
       <h3>Quick start <span class="section-note">optional</span></h3>
-      <p class="muted">Paste a CV or LinkedIn summary and we'll suggest a few roles/industries to confirm,
-         and keep the text on hand as context for later cover letters and CVs.</p>
+      <p class="muted">Paste a CV or LinkedIn summary and we'll suggest a few roles to confirm, and keep the
+         text on hand as context for later cover letters and CVs.</p>
       <textarea id="cv-paste" rows="4" placeholder="Paste CV text or a LinkedIn summary here (optional)"></textarea>
       <div class="actions">
         <button id="cv-scan-btn" class="btn secondary">Scan for suggestions</button>
@@ -35,7 +44,33 @@
         <button id="regen-btn" class="btn secondary">Regenerate from my answers</button>
       </div>
       <p class="summary-note">This is a template-generated draft, not real AI yet &mdash; it's a stand-in so we can
-         validate the structure before wiring up an actual model. Edit it freely; your edits stick until you regenerate.</p>
+         validate the structure before wiring up an actual model.</p>
+    </div>
+
+    <div class="card">
+      <h3>Location &amp; mobility</h3>
+      <div class="row">
+        <input id="loc-city" type="text" list="city-suggestions" placeholder="Current city" />
+        <input id="loc-country" type="text" placeholder="Current country" />
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <select id="loc-workauth"></select>
+        <select id="loc-workmode"></select>
+      </div>
+      <input id="loc-workauth-detail" type="text" placeholder="Visa/permit detail (optional)" style="margin-top:8px;" />
+      <label class="check-chip" id="loc-relocate-wrap" style="margin-top:10px;">
+        <input type="checkbox" id="loc-relocate" /> Open to relocating
+      </label>
+    </div>
+
+    <div class="card">
+      <h3>Links &amp; job search status</h3>
+      <div class="row">
+        <input id="link-linkedin" type="text" placeholder="LinkedIn URL" />
+        <input id="link-github" type="text" placeholder="GitHub URL" />
+        <input id="link-portfolio" type="text" placeholder="Portfolio URL" />
+      </div>
+      <select id="job-status" style="margin-top:8px;"></select>
     </div>
 
     <div class="card">
@@ -50,14 +85,10 @@
     </div>
 
     <div class="card">
-      <h3>Location &amp; logistics</h3>
+      <h3>Desired locations &amp; availability</h3>
       <div class="field" id="field-locations">
-        <div class="field-label-row"><label class="main-label">Locations</label></div>
-        <p class="hint">Pick from the list where you can &mdash; it keeps the data clean. Custom entries are flagged so you can double-check spelling.</p>
-      </div>
-      <div class="field" id="field-remote"></div>
-      <div class="field" id="field-workauth">
-        <div class="field-label-row"><label class="main-label">Work authorization</label></div>
+        <div class="field-label-row"><label class="main-label">Locations you'd work in</label></div>
+        <p class="hint">Pick from the list where you can. Custom entries are flagged so you can double-check spelling.</p>
       </div>
       <div class="field" id="field-availability">
         <div class="field-label-row"><label class="main-label">Availability</label></div>
@@ -89,33 +120,49 @@
       </div>
       <div class="field" id="field-interests">
         <div class="field-label-row"><label class="main-label">Interests</label></div>
-        <p class="hint">For a fair, human picture of you.</p>
+        <p class="hint">For a fair, human picture of you &mdash; separate from skills below.</p>
       </div>
     </div>
 
     <div class="card">
-      <h3>Background <span class="section-note">for future CVs &amp; cover letters</span></h3>
-      <div class="field">
-        <div class="field-label-row"><label class="main-label">Education</label></div>
-        <div id="education-list"></div>
-        <button class="btn small secondary" id="add-education">+ Add education</button>
-      </div>
-      <div class="field">
-        <div class="field-label-row"><label class="main-label">Work experience</label></div>
-        <div id="experience-list"></div>
-        <button class="btn small secondary" id="add-experience">+ Add experience</button>
-      </div>
-      <div class="field">
-        <div class="field-label-row"><label class="main-label">Extracurriculars &amp; activities</label></div>
-        <div id="extracurricular-list"></div>
-        <button class="btn small secondary" id="add-extracurricular">+ Add activity</button>
-      </div>
+      <h3>Work experience <span class="section-note">structured, LinkedIn-style</span></h3>
+      <div id="experience-list"></div>
+      <button class="btn small secondary" id="add-experience">+ Add experience</button>
+    </div>
+
+    <div class="card">
+      <h3>Education <span class="section-note">structured, LinkedIn-style</span></h3>
+      <div id="education-list"></div>
+      <button class="btn small secondary" id="add-education">+ Add education</button>
+    </div>
+
+    <div class="card">
+      <h3>Skills</h3>
+      <div id="skills-list"></div>
+      <button class="btn small secondary" id="add-skill">+ Add skill</button>
+    </div>
+
+    <div class="card">
+      <h3>Languages</h3>
+      <div id="languages-list"></div>
+      <button class="btn small secondary" id="add-language">+ Add language</button>
+    </div>
+
+    <div class="card">
+      <h3>Certifications</h3>
+      <div id="certifications-list"></div>
+      <button class="btn small secondary" id="add-certification">+ Add certification</button>
+    </div>
+
+    <div class="card">
+      <h3>Extracurriculars &amp; activities</h3>
+      <div id="extracurricular-list"></div>
+      <button class="btn small secondary" id="add-extracurricular">+ Add activity</button>
     </div>
 
     <div class="card">
       <h3>Additional context <span class="section-note">for the AI to draw on later</span></h3>
-      <p class="muted">Anything else worth keeping on hand &mdash; a recommendation excerpt, a project writeup,
-         old CV bullet points. Stored as-is, not parsed.</p>
+      <p class="muted">Anything else worth keeping on hand. Stored as-is, not parsed.</p>
       <div id="notes-list"></div>
       <button class="btn small secondary" id="add-note">+ Add a note</button>
     </div>
@@ -129,7 +176,11 @@
 
   <datalist id="role-suggestions"></datalist>
   <datalist id="city-suggestions"></datalist>
+  <datalist id="institution-suggestions"></datalist>
+  <datalist id="company-suggestions"></datalist>
+  <datalist id="language-suggestions"></datalist>
 
+  <script src="taxonomies.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

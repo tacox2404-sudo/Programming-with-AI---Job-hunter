@@ -3,73 +3,48 @@
 /* ---------------------------------------------------------------------
  * Job Search Profile Builder — single-page editor.
  *
- * v2: replaces the one-question-at-a-time chat wizard with a flat form
- * so people can fill fields in any order at their own pace. Free-text
- * risk fields (location, pay) are now standardized pickers so a typo or
- * a stray digit can't silently corrupt the data. Adds background
- * (education/experience/extracurriculars) and free-form context notes
- * so there's enough material here to eventually draft a CV or cover
- * letter from. The profile summary is still template-generated, not a
- * real model call — see synthesizeSummary() for where that would plug
- * in once this structure is validated.
+ * v3: experience/education are now structured, LinkedIn-style entities
+ * (seniority, employment type, industry, institution type, degree type,
+ * GPA, etc.) instead of free text + a description box. Added Skills,
+ * Languages and Certifications as their own entities, plus a Location &
+ * mobility block, links, job-search status, and computed signals (total
+ * years of experience, inferred seniority, completeness score). Every
+ * enum field is validated against taxonomies.js on load so a bad or
+ * foreign value can't silently sit in the data. See synthesizeSummary()
+ * for where a real model call would eventually replace the template.
  * ------------------------------------------------------------------- */
 
-const STORAGE_KEY = "jobHunterProfile.v2";
-
-const LEVELS = ["Internship", "Graduate scheme / trainee", "Entry-level", "Junior", "Associate", "Other"];
-
-const CITY_SUGGESTIONS = [
-  "Remote", "New York, USA", "San Francisco, USA", "London, UK", "Berlin, Germany",
-  "Amsterdam, Netherlands", "Paris, France", "Dublin, Ireland", "Toronto, Canada",
-  "Singapore", "Sydney, Australia", "Madrid, Spain", "Lisbon, Portugal", "Barcelona, Spain",
-  "Zurich, Switzerland", "Stockholm, Sweden", "Tokyo, Japan", "Dubai, UAE",
-  "Bangalore, India", "São Paulo, Brazil"
-];
-
-const INDUSTRY_LIST = [
-  "Technology / Software", "Fintech", "Banking & Finance", "Healthcare", "Education",
-  "E-commerce & Retail", "Manufacturing", "Consulting", "Non-profit", "Government",
-  "Media & Entertainment", "Gaming", "Logistics", "Energy", "Insurance", "Telecom",
-  "Pharma & Biotech"
-];
-
-const DEALBREAKER_PRESETS = [
-  "No remote option at all", "Unpaid position", "Rotational / night shifts",
-  "Commute over 1 hour", "No visa sponsorship", "Rigid 9-to-5 hours"
-];
-
-const PAY_BRACKETS = ["Under 25k", "25k–40k", "40k–55k", "55k–70k", "70k–90k", "90k–120k", "120k+"];
-const CURRENCIES = ["USD", "EUR", "GBP", "Other"];
-const PERIODS = ["year", "month", "hour"];
-const WORK_AUTH_OPTIONS = ["Citizen / permanent resident", "Currently authorized (visa or permit)", "Would need sponsorship", "Not sure yet"];
-const FLEXIBILITY_OPTIONS = ["Immediately", "Within 2 weeks", "Within 1 month", "After a specific date", "Fully flexible"];
-
-const ROLE_KEYWORDS = [
-  "software engineer", "data analyst", "data scientist", "product manager",
-  "marketing", "sales", "business analyst", "financial analyst", "accountant",
-  "designer", "ux designer", "consultant", "operations", "project manager",
-  "customer success", "hr", "human resources", "recruiter", "researcher",
-  "teacher", "nurse", "engineer", "developer", "analyst"
-];
+const STORAGE_KEY = "jobHunterProfile.v3";
 
 function emptyProfile() {
   return {
     headline: { value: "", source: "open", evidence: "" },
     story: { value: "", source: "open", evidence: "" },
     interests: [],
+    mobility: {
+      current_city: "", current_country: "",
+      work_authorization: "", work_authorization_detail: "",
+      open_to_relocate: false,
+      work_mode: ""
+    },
+    links: { linkedin: "", github: "", portfolio: "" },
+    job_search_status: "",
     preferences: {
       roles: { value: [], source: "open", evidence: "" },
       levels: { value: [], source: "open", evidence: "" },
       locations: { value: [], source: "open", evidence: "" },
-      remote_relocate: { value: [], source: "open", evidence: "" },
-      work_authorization: { value: "", detail: "", source: "open", evidence: "" },
-      availability: { value: { earliest_date: "", flexibility: "" }, source: "open", evidence: "" },
       industries: { value: [], source: "open", evidence: "" },
       companies: { value: [], source: "open", evidence: "" },
       pay_floor: { value: { bracket: "", currency: "USD", period: "year" }, source: "open", evidence: "" },
-      dealbreakers: { value: [], source: "open", evidence: "" }
+      dealbreakers: { value: [], source: "open", evidence: "" },
+      availability: { value: { earliest_date: "", flexibility: "" }, source: "open", evidence: "" }
     },
-    background: { education: [], experience: [], extracurriculars: [] },
+    experience: [],
+    education: [],
+    skills: [],
+    languages: [],
+    certifications: [],
+    background: { extracurriculars: [] },
     context_notes: []
   };
 }
@@ -77,6 +52,41 @@ function emptyProfile() {
 let profile = emptyProfile();
 let idSeq = 1;
 function nextId() { return "e" + (idSeq++) + "_" + Date.now().toString(36); }
+
+/* Re-validate every enum-backed field against its taxonomy. Called once
+   after loading a saved (or, eventually, externally-parsed) profile so
+   a bad/foreign value resets to "" instead of landing in the data. */
+function revalidateProfile(p) {
+  const P = p.preferences;
+  P.levels.value = P.levels.value.filter(v => LEVELS.includes(v));
+  P.industries.value = P.industries.value.filter(v => INDUSTRY_LIST.includes(v) || true); // custom industries allowed, kept as-is
+  P.pay_floor.value.bracket = coerceEnum(P.pay_floor.value.bracket, PAY_BRACKETS);
+  P.pay_floor.value.currency = coerceEnum(P.pay_floor.value.currency, CURRENCIES) || "USD";
+  P.pay_floor.value.period = coerceEnum(P.pay_floor.value.period, PERIODS) || "year";
+  P.availability.value.flexibility = coerceEnum(P.availability.value.flexibility, FLEXIBILITY_OPTIONS);
+  P.dealbreakers.value = P.dealbreakers.value; // presets + custom both allowed as text
+
+  p.mobility.work_authorization = coerceEnum(p.mobility.work_authorization, WORK_AUTH_OPTIONS);
+  p.mobility.work_mode = coerceEnum(p.mobility.work_mode, WORK_MODE_OPTIONS);
+  p.job_search_status = coerceEnum(p.job_search_status, JOB_SEARCH_STATUS);
+
+  p.experience.forEach(e => {
+    e.employment_type = coerceEnum(e.employment_type, EMPLOYMENT_TYPES);
+    e.seniority = coerceEnum(e.seniority, SENIORITY_LEVELS);
+    e.company_industry = coerceEnum(e.company_industry, INDUSTRY_LIST);
+  });
+  p.education.forEach(ed => {
+    ed.institution_type = coerceEnum(ed.institution_type, INSTITUTION_TYPES);
+    ed.degree_type = coerceEnum(ed.degree_type, DEGREE_TYPES);
+    ed.gpa_scale = coerceEnum(ed.gpa_scale, GPA_SCALES);
+  });
+  p.skills.forEach(s => {
+    s.category = coerceEnum(s.category, SKILL_CATEGORIES);
+    s.proficiency = coerceEnum(s.proficiency, PROFICIENCY_LEVELS);
+  });
+  p.languages.forEach(l => { l.proficiency = coerceEnum(l.proficiency, LANGUAGE_PROFICIENCY); });
+  return p;
+}
 
 function saveProfile() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(profile)); } catch (e) { /* ignore */ }
@@ -105,12 +115,9 @@ function badgeEl(source) {
   return span;
 }
 
-/* Wires the shared badge + "just leaning" toggle onto a field's container.
-   Call refresh() after the field's own control(s) change. */
 function attachFieldChrome(hostRow, field, isEmptyFn) {
   const badge = badgeEl(field.source);
   hostRow.appendChild(badge);
-
   const meta = document.createElement("div");
   meta.className = "field-meta";
   const leanLabel = document.createElement("label");
@@ -139,15 +146,13 @@ function attachFieldChrome(hostRow, field, isEmptyFn) {
     badge.className = `badge ${field.source}`;
     badge.textContent = badgeLabel(field.source);
     saveProfile();
+    refreshCompleteness();
   }
   leanCb.addEventListener("change", refresh);
   reason.addEventListener("blur", () => { field.evidence = reason.value.trim(); saveProfile(); });
   return refresh;
 }
 
-/* ---- Reusable tag input (chips), optionally backed by a <datalist> ----
-   Returns a redraw() function so callers can refresh the chips after
-   mutating `values` from outside (e.g. a CV-suggestion click). */
 function buildTagInput(container, values, onChange, opts) {
   opts = opts || {};
   const wrap = document.createElement("div");
@@ -189,7 +194,6 @@ function buildTagInput(container, values, onChange, opts) {
   return redraw;
 }
 
-/* ---- Reusable checkbox-chip group (standardized picks) ---- */
 function buildCheckChips(container, options, values, onChange) {
   const wrap = document.createElement("div");
   wrap.className = "check-chips";
@@ -212,9 +216,23 @@ function buildCheckChips(container, options, values, onChange) {
   container.appendChild(wrap);
 }
 
+function buildSelect(options, selected, placeholder) {
+  const select = document.createElement("select");
+  const blank = document.createElement("option");
+  blank.value = ""; blank.textContent = placeholder;
+  select.appendChild(blank);
+  options.forEach(opt => {
+    const o = document.createElement("option");
+    o.value = opt; o.textContent = opt;
+    if (selected === opt) o.selected = true;
+    select.appendChild(o);
+  });
+  return select;
+}
+
 /* ---------------------------------------------------------------------
- * Field builders — one per preference, each renders into its #field-*
- * container (label row already present in the HTML) and wires badges.
+ * Simple preference fields (roles / levels / locations / industries /
+ * companies / pay / dealbreakers / interests / availability)
  * ------------------------------------------------------------------- */
 
 let rolesHooks = null;
@@ -247,48 +265,6 @@ function renderLocations() {
   refresh();
 }
 
-function renderRemote() {
-  const host = document.getElementById("field-remote");
-  const label = document.createElement("label");
-  label.className = "main-label";
-  label.style.display = "block";
-  label.style.marginBottom = "6px";
-  label.textContent = "Remote & relocation";
-  host.appendChild(label);
-  const field = profile.preferences.remote_relocate;
-  buildCheckChips(host, ["Open to remote", "Open to relocate"], field.value, () => {
-    field.source = field.value.length ? "stated" : "open";
-    saveProfile();
-  });
-}
-
-function renderWorkAuth() {
-  const host = document.getElementById("field-workauth");
-  const row = host.querySelector(".field-label-row");
-  const field = profile.preferences.work_authorization;
-  const select = document.createElement("select");
-  const blank = document.createElement("option");
-  blank.value = ""; blank.textContent = "Select one…";
-  select.appendChild(blank);
-  WORK_AUTH_OPTIONS.forEach(opt => {
-    const o = document.createElement("option");
-    o.value = opt; o.textContent = opt;
-    if (field.value === opt) o.selected = true;
-    select.appendChild(o);
-  });
-  const detail = document.createElement("input");
-  detail.type = "text";
-  detail.placeholder = "Detail (optional) — e.g. which visa/permit";
-  detail.value = field.detail || "";
-  detail.style.marginTop = "6px";
-  select.addEventListener("change", () => { field.value = select.value; refresh(); });
-  detail.addEventListener("blur", () => { field.detail = detail.value.trim(); saveProfile(); });
-  host.appendChild(select);
-  host.appendChild(detail);
-  const refresh = attachFieldChrome(row, field, () => !field.value);
-  refresh();
-}
-
 function renderAvailability() {
   const host = document.getElementById("field-availability");
   const row = host.querySelector(".field-label-row");
@@ -298,16 +274,7 @@ function renderAvailability() {
   const dateInput = document.createElement("input");
   dateInput.type = "date";
   dateInput.value = field.value.earliest_date || "";
-  const flexSelect = document.createElement("select");
-  const blank = document.createElement("option");
-  blank.value = ""; blank.textContent = "Flexibility…";
-  flexSelect.appendChild(blank);
-  FLEXIBILITY_OPTIONS.forEach(opt => {
-    const o = document.createElement("option");
-    o.value = opt; o.textContent = opt;
-    if (field.value.flexibility === opt) o.selected = true;
-    flexSelect.appendChild(o);
-  });
+  const flexSelect = buildSelect(FLEXIBILITY_OPTIONS, field.value.flexibility, "Flexibility…");
   dateInput.addEventListener("change", () => { field.value.earliest_date = dateInput.value; refresh(); });
   flexSelect.addEventListener("change", () => { field.value.flexibility = flexSelect.value; refresh(); });
   wrap.appendChild(dateInput);
@@ -321,7 +288,6 @@ function renderIndustries() {
   const host = document.getElementById("field-industries");
   const row = host.querySelector(".field-label-row");
   const field = profile.preferences.industries;
-  const presetValues = field.value.filter(v => INDUSTRY_LIST.includes(v));
   buildCheckChips(host, INDUSTRY_LIST, field.value, () => refresh());
   const customWrap = document.createElement("div");
   customWrap.style.marginTop = "8px";
@@ -339,7 +305,7 @@ function renderCompanies() {
   const host = document.getElementById("field-companies");
   const row = host.querySelector(".field-label-row");
   const field = profile.preferences.companies;
-  buildTagInput(host, field.value, () => refresh(), { placeholder: "Company name — Enter to add" });
+  buildTagInput(host, field.value, () => refresh(), { placeholder: "Company name — Enter to add", datalistId: "company-suggestions" });
   const refresh = attachFieldChrome(row, field, () => field.value.length === 0);
   refresh();
 }
@@ -350,16 +316,7 @@ function renderPay() {
   const field = profile.preferences.pay_floor;
   const wrap = document.createElement("div");
   wrap.className = "row";
-  const bracketSelect = document.createElement("select");
-  const blank = document.createElement("option");
-  blank.value = ""; blank.textContent = "Minimum bracket…";
-  bracketSelect.appendChild(blank);
-  PAY_BRACKETS.forEach(b => {
-    const o = document.createElement("option");
-    o.value = b; o.textContent = b;
-    if (field.value.bracket === b) o.selected = true;
-    bracketSelect.appendChild(o);
-  });
+  const bracketSelect = buildSelect(PAY_BRACKETS, field.value.bracket, "Minimum bracket…");
   const currencySelect = document.createElement("select");
   CURRENCIES.forEach(c => {
     const o = document.createElement("option");
@@ -437,14 +394,61 @@ function renderInterests() {
 }
 
 /* ---------------------------------------------------------------------
- * Background: repeatable entry cards (education / experience / extracurriculars)
+ * Location & mobility, links, job search status
  * ------------------------------------------------------------------- */
 
-function renderEntryList(listKey, containerId, fields, describeEmpty) {
+function initMobility() {
+  const m = profile.mobility;
+  const city = document.getElementById("loc-city");
+  const country = document.getElementById("loc-country");
+  const authDetail = document.getElementById("loc-workauth-detail");
+  const relocate = document.getElementById("loc-relocate");
+
+  city.value = m.current_city;
+  country.value = m.current_country;
+  authDetail.value = m.work_authorization_detail;
+  relocate.checked = m.open_to_relocate;
+
+  const authSelect = buildSelect(WORK_AUTH_OPTIONS, m.work_authorization, "Work authorization…");
+  authSelect.id = "loc-workauth";
+  document.getElementById("loc-workauth").replaceWith(authSelect);
+
+  const modeSelect = buildSelect(WORK_MODE_OPTIONS, m.work_mode, "Work mode preference…");
+  modeSelect.id = "loc-workmode";
+  document.getElementById("loc-workmode").replaceWith(modeSelect);
+
+  city.addEventListener("blur", () => { m.current_city = city.value.trim(); saveProfile(); refreshCompleteness(); });
+  country.addEventListener("blur", () => { m.current_country = country.value.trim(); saveProfile(); refreshCompleteness(); });
+  authDetail.addEventListener("blur", () => { m.work_authorization_detail = authDetail.value.trim(); saveProfile(); });
+  relocate.addEventListener("change", () => { m.open_to_relocate = relocate.checked; saveProfile(); refreshCompleteness(); });
+  authSelect.addEventListener("change", () => { m.work_authorization = authSelect.value; saveProfile(); refreshCompleteness(); });
+  modeSelect.addEventListener("change", () => { m.work_mode = modeSelect.value; saveProfile(); refreshCompleteness(); });
+}
+
+function initLinksAndStatus() {
+  const li = document.getElementById("link-linkedin");
+  const gh = document.getElementById("link-github");
+  const pf = document.getElementById("link-portfolio");
+  li.value = profile.links.linkedin; gh.value = profile.links.github; pf.value = profile.links.portfolio;
+  li.addEventListener("blur", () => { profile.links.linkedin = li.value.trim(); saveProfile(); refreshCompleteness(); });
+  gh.addEventListener("blur", () => { profile.links.github = gh.value.trim(); saveProfile(); });
+  pf.addEventListener("blur", () => { profile.links.portfolio = pf.value.trim(); saveProfile(); });
+
+  const statusSelect = buildSelect(JOB_SEARCH_STATUS, profile.job_search_status, "Job search status…");
+  statusSelect.id = "job-status";
+  document.getElementById("job-status").replaceWith(statusSelect);
+  statusSelect.addEventListener("change", () => { profile.job_search_status = statusSelect.value; saveProfile(); refreshCompleteness(); });
+}
+
+/* ---------------------------------------------------------------------
+ * Generic repeatable-entity list renderer: text / select / checkbox /
+ * textarea fields, with optional canonical-name normalization on blur.
+ * ------------------------------------------------------------------- */
+
+function renderEntityList(entries, containerId, fieldDefs, describeEmpty, onChange) {
   const container = document.getElementById(containerId);
   function redraw() {
     container.innerHTML = "";
-    const entries = profile.background[listKey];
     if (!entries.length) {
       const p = document.createElement("p");
       p.className = "empty-state";
@@ -461,31 +465,71 @@ function renderEntryList(listKey, containerId, fields, describeEmpty) {
       span.textContent = `#${idx + 1}`;
       const rm = document.createElement("button");
       rm.className = "btn small ghost";
-      rm.type = "button";
-      rm.textContent = "Remove";
-      rm.addEventListener("click", () => { entries.splice(idx, 1); saveProfile(); redraw(); });
+      rm.type = "button"; rm.textContent = "Remove";
+      rm.addEventListener("click", () => { entries.splice(idx, 1); saveProfile(); redraw(); onChange && onChange(); refreshCompleteness(); });
       head.appendChild(span); head.appendChild(rm);
       card.appendChild(head);
 
       const grid = document.createElement("div");
       grid.className = "entry-grid";
-      fields.forEach(f => {
-        if (f.type === "textarea") return; // rendered separately below
+      fieldDefs.forEach(f => {
+        if (f.type === "textarea") return;
+        if (f.type === "checkbox") {
+          const label = document.createElement("label");
+          label.className = "check-chip";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = !!entry[f.key];
+          cb.addEventListener("change", () => {
+            entry[f.key] = cb.checked;
+            if (f.disablesKey) {
+              const endInput = grid.querySelector(`[data-key="${f.disablesKey}"]`);
+              if (endInput) endInput.disabled = cb.checked;
+            }
+            saveProfile(); onChange && onChange(); refreshCompleteness();
+          });
+          label.appendChild(cb);
+          label.appendChild(document.createTextNode(f.label));
+          grid.appendChild(label);
+          return;
+        }
+        if (f.type === "select") {
+          const select = buildSelect(f.options, entry[f.key], f.label);
+          select.addEventListener("change", () => { entry[f.key] = select.value; saveProfile(); onChange && onChange(); refreshCompleteness(); });
+          grid.appendChild(select);
+          return;
+        }
         const inp = document.createElement("input");
-        inp.type = f.type || "text";
+        inp.type = f.type === "month" ? "month" : "text";
+        inp.dataset.key = f.key;
         inp.placeholder = f.label;
         inp.value = entry[f.key] || "";
-        inp.addEventListener("blur", () => { entry[f.key] = inp.value.trim(); saveProfile(); });
+        if (f.disabledIf && entry[f.disabledIf]) inp.disabled = true;
+        if (f.datalistId) inp.setAttribute("list", f.datalistId);
+        inp.addEventListener("blur", () => {
+          let v = inp.value.trim();
+          if (f.normalizeAgainst) {
+            const result = normalizeAgainstList(v, f.normalizeAgainst);
+            if (result.matched && result.canonical !== v) {
+              v = result.canonical;
+              inp.value = v;
+              toast(`Normalized to "${v}"`);
+            }
+          }
+          entry[f.key] = v;
+          saveProfile(); onChange && onChange(); refreshCompleteness();
+        });
         grid.appendChild(inp);
       });
       card.appendChild(grid);
-      const descField = fields.find(f => f.type === "textarea");
+
+      const descField = fieldDefs.find(f => f.type === "textarea");
       if (descField) {
         const ta = document.createElement("textarea");
         ta.rows = 2;
         ta.placeholder = descField.label;
         ta.value = entry[descField.key] || "";
-        ta.addEventListener("blur", () => { entry[descField.key] = ta.value.trim(); saveProfile(); });
+        ta.addEventListener("blur", () => { entry[descField.key] = ta.value.trim(); saveProfile(); refreshCompleteness(); });
         card.appendChild(ta);
       }
       container.appendChild(card);
@@ -495,39 +539,96 @@ function renderEntryList(listKey, containerId, fields, describeEmpty) {
   return redraw;
 }
 
-function initBackgroundSections() {
-  const eduRedraw = renderEntryList("education", "education-list", [
-    { key: "school", label: "School" },
-    { key: "degree", label: "Degree" },
-    { key: "field", label: "Field of study" },
+function initExperience() {
+  const redraw = renderEntityList(profile.experience, "experience-list", [
+    { key: "title", label: "Job title" },
+    { key: "company", label: "Company", normalizeAgainst: COMPANY_SEED, datalistId: "company-suggestions" },
+    { key: "company_industry", label: "Industry…", type: "select", options: INDUSTRY_LIST },
+    { key: "employment_type", label: "Employment type…", type: "select", options: EMPLOYMENT_TYPES },
+    { key: "seniority", label: "Seniority…", type: "select", options: SENIORITY_LEVELS },
+    { key: "location_city", label: "City", datalistId: "city-suggestions" },
+    { key: "location_country", label: "Country" },
+    { key: "start", label: "Start", type: "month" },
+    { key: "end", label: "End", type: "month", disabledIf: "is_current" },
+    { key: "is_current", label: "Current role", type: "checkbox", disablesKey: "end" },
+    { key: "description", label: "What did you do? (a couple of bullet points is fine)", type: "textarea" }
+  ], "No work experience added yet.", refreshComputedSignals);
+  document.getElementById("add-experience").addEventListener("click", () => {
+    profile.experience.push({
+      id: nextId(), title: "", company: "", company_industry: "", employment_type: "",
+      seniority: "", location_city: "", location_country: "", start: "", end: "",
+      is_current: false, description: ""
+    });
+    saveProfile(); redraw(); refreshCompleteness();
+  });
+}
+
+function initEducation() {
+  const redraw = renderEntityList(profile.education, "education-list", [
+    { key: "institution", label: "Institution", normalizeAgainst: INSTITUTION_SEED, datalistId: "institution-suggestions" },
+    { key: "institution_type", label: "Institution type…", type: "select", options: INSTITUTION_TYPES },
+    { key: "degree_type", label: "Degree type…", type: "select", options: DEGREE_TYPES },
+    { key: "field_of_study", label: "Field of study" },
+    { key: "gpa", label: "GPA" },
+    { key: "gpa_scale", label: "GPA scale…", type: "select", options: GPA_SCALES },
     { key: "start", label: "Start year" },
     { key: "end", label: "End year (or expected)" }
   ], "No education added yet.");
   document.getElementById("add-education").addEventListener("click", () => {
-    profile.background.education.push({ id: nextId(), school: "", degree: "", field: "", start: "", end: "" });
-    saveProfile(); eduRedraw();
+    profile.education.push({
+      id: nextId(), institution: "", institution_type: "", degree_type: "", field_of_study: "",
+      gpa: "", gpa_scale: "", start: "", end: ""
+    });
+    saveProfile(); redraw(); refreshCompleteness();
   });
+}
 
-  const expRedraw = renderEntryList("experience", "experience-list", [
-    { key: "title", label: "Title" },
-    { key: "org", label: "Organization" },
-    { key: "start", label: "Start (mm/yyyy)" },
-    { key: "end", label: "End (mm/yyyy or Present)" },
-    { key: "description", label: "What did you do? (a couple of bullet points is fine)", type: "textarea" }
-  ], "No work experience added yet.");
-  document.getElementById("add-experience").addEventListener("click", () => {
-    profile.background.experience.push({ id: nextId(), title: "", org: "", start: "", end: "", description: "" });
-    saveProfile(); expRedraw();
+function initSkills() {
+  const redraw = renderEntityList(profile.skills, "skills-list", [
+    { key: "name", label: "Skill name" },
+    { key: "category", label: "Category…", type: "select", options: SKILL_CATEGORIES },
+    { key: "proficiency", label: "Proficiency…", type: "select", options: PROFICIENCY_LEVELS },
+    { key: "years_experience", label: "Years of experience" }
+  ], "No skills added yet.");
+  document.getElementById("add-skill").addEventListener("click", () => {
+    profile.skills.push({ id: nextId(), name: "", category: "", proficiency: "", years_experience: "" });
+    saveProfile(); redraw(); refreshCompleteness();
   });
+}
 
-  const extraRedraw = renderEntryList("extracurriculars", "extracurricular-list", [
+function initLanguages() {
+  const redraw = renderEntityList(profile.languages, "languages-list", [
+    { key: "language", label: "Language", datalistId: "language-suggestions" },
+    { key: "proficiency", label: "Proficiency (CEFR)…", type: "select", options: LANGUAGE_PROFICIENCY }
+  ], "No languages added yet.");
+  document.getElementById("add-language").addEventListener("click", () => {
+    profile.languages.push({ id: nextId(), language: "", proficiency: "" });
+    saveProfile(); redraw(); refreshCompleteness();
+  });
+}
+
+function initCertifications() {
+  const redraw = renderEntityList(profile.certifications, "certifications-list", [
+    { key: "name", label: "Certification name" },
+    { key: "issuer", label: "Issuer (e.g. AWS, Google)" },
+    { key: "date", label: "Date", type: "month" },
+    { key: "credential_id", label: "Credential ID (optional)" }
+  ], "No certifications added yet.");
+  document.getElementById("add-certification").addEventListener("click", () => {
+    profile.certifications.push({ id: nextId(), name: "", issuer: "", date: "", credential_id: "" });
+    saveProfile(); redraw(); refreshCompleteness();
+  });
+}
+
+function initExtracurriculars() {
+  const redraw = renderEntityList(profile.background.extracurriculars, "extracurricular-list", [
     { key: "name", label: "Activity / organization" },
     { key: "role", label: "Your role" },
     { key: "description", label: "Description", type: "textarea" }
   ], "No extracurriculars added yet.");
   document.getElementById("add-extracurricular").addEventListener("click", () => {
     profile.background.extracurriculars.push({ id: nextId(), name: "", role: "", description: "" });
-    saveProfile(); extraRedraw();
+    saveProfile(); redraw(); refreshCompleteness();
   });
 }
 
@@ -621,34 +722,79 @@ function initCvScan(notesRedraw) {
       profile.context_notes.push({ id: nextId(), label: "Pasted CV / LinkedIn text", text });
       saveProfile();
       notesRedraw();
-      toast("Saved as a context note too, for later.");
+      toast("Also saved as a context note for later.");
     }
   });
 }
 
 /* ---------------------------------------------------------------------
+ * Computed signals + completeness score
+ * ------------------------------------------------------------------- */
+
+function refreshComputedSignals() {
+  // Recomputed on demand (e.g. before export); nothing to render inline
+  // for these right now beyond what refreshCompleteness() already shows.
+}
+
+function computeCompleteness() {
+  const p = profile;
+  const checks = [
+    p.preferences.roles.source !== "open",
+    p.preferences.levels.source !== "open",
+    p.preferences.locations.source !== "open",
+    p.preferences.pay_floor.source !== "open",
+    p.preferences.availability.source !== "open",
+    !!p.mobility.current_city,
+    !!p.mobility.work_authorization,
+    !!p.mobility.work_mode,
+    p.experience.some(e => e.title && e.company),
+    p.education.some(e => e.institution && e.degree_type),
+    p.skills.length > 0,
+    p.languages.length > 0,
+    !!p.links.linkedin,
+    !!p.job_search_status,
+    p.interests.length > 0
+  ];
+  const filled = checks.filter(Boolean).length;
+  return Math.round((filled / checks.length) * 100);
+}
+
+function refreshCompleteness() {
+  const pct = computeCompleteness();
+  document.getElementById("completeness-pct").textContent = pct + "%";
+  document.getElementById("completeness-fill").style.width = pct + "%";
+  const hint = document.getElementById("completeness-hint");
+  if (pct === 100) hint.textContent = "Everything a matcher would want is filled in.";
+  else if (pct >= 60) hint.textContent = "Good shape — a few structured fields are still open.";
+  else hint.textContent = "Fill in more structured fields (not just the summary) to make this usable for matching.";
+}
+
+/* ---------------------------------------------------------------------
  * Summary (headline + story) — template-generated draft.
  *
- * NOTE: this is a deterministic stand-in, not a real model call. A
- * static page can't safely call an LLM API (no way to hold a key), and
- * that's real infra/cost — out of scope for validating the structure.
- * The hook is here: swap this function's body for an API call once the
- * schema above is settled and a backend exists to make the call from.
+ * NOTE: deterministic stand-in, not a real model call — see the note
+ * left for the team: a static page can't safely hold an API key, and
+ * standing up a backend for this is real infra/cost, out of scope while
+ * we're validating the data structure itself. Swap this function's body
+ * for an actual API call once the schema above is settled.
  * ------------------------------------------------------------------- */
 
 function synthesizeSummary() {
   const p = profile.preferences;
-  const filled = (key, get) => p[key].source !== "open" && !isFieldEmpty(key, get);
   function isFieldEmpty(key) {
     const v = p[key].value;
     if (Array.isArray(v)) return v.length === 0;
     if (v && typeof v === "object") return Object.values(v).every(x => !x);
     return !v;
   }
+  const filled = key => p[key].source !== "open" && !isFieldEmpty(key);
   const qualifier = key => (p[key].source === "lean" ? "possibly " : "");
   const asText = key => Array.isArray(p[key].value) ? p[key].value.join(" / ") : p[key].value;
 
-  const any = ["roles", "levels", "locations", "industries"].some(k => filled(k));
+  const totalYears = computeTotalYearsExperience(profile.experience);
+  const inferredSeniority = inferSeniority(totalYears);
+
+  const any = ["roles", "levels", "locations", "industries"].some(k => filled(k)) || profile.experience.length;
   if (!any) {
     profile.headline = { value: "A profile just getting started.", source: "lean", evidence: "Not enough filled in yet to summarize." };
     profile.story = { value: "Most fields are still open — fill in what you know and regenerate any time.", source: "lean", evidence: "" };
@@ -656,24 +802,25 @@ function synthesizeSummary() {
   }
 
   let headlineParts = [];
+  if (totalYears > 0) headlineParts.push(`${inferredSeniority}`);
   if (filled("roles")) headlineParts.push(`${qualifier("roles")}${asText("roles")}`);
-  if (filled("levels")) headlineParts.push(`(${asText("levels")})`);
+  else if (filled("levels")) headlineParts.push(`(${asText("levels")})`);
   let headline = headlineParts.join(" ");
   if (filled("locations")) headline += ` — open to ${asText("locations")}`;
   headline = (headline.trim() || "A profile taking shape.");
   headline = headline.charAt(0).toUpperCase() + headline.slice(1);
 
   let sentences = [];
+  if (totalYears > 0) sentences.push(`About ${totalYears} year${totalYears === 1 ? "" : "s"} of experience (${inferredSeniority} level).`);
   if (filled("roles")) sentences.push(`Looking for ${qualifier("roles")}${asText("roles")} roles${filled("levels") ? ` at the ${qualifier("levels")}${asText("levels")} level` : ""}.`);
   if (filled("industries")) sentences.push(`Interested in ${qualifier("industries")}${asText("industries")}.`);
   if (filled("locations")) sentences.push(`Open to ${qualifier("locations")}${asText("locations")}.`);
+  if (profile.mobility.work_mode) sentences.push(`Work mode preference: ${profile.mobility.work_mode}.`);
   if (p.pay_floor.value.bracket) sentences.push(`Pay floor around ${p.pay_floor.value.bracket} ${p.pay_floor.value.currency}/${p.pay_floor.value.period}.`);
   if (p.availability.value.flexibility) sentences.push(`Availability: ${p.availability.value.flexibility}${p.availability.value.earliest_date ? `, earliest ${p.availability.value.earliest_date}` : ""}.`);
   if (filled("dealbreakers")) sentences.push(`Hard no on: ${asText("dealbreakers")}.`);
-  if (profile.background.experience.length) {
-    const latest = profile.background.experience[profile.background.experience.length - 1];
-    if (latest.title) sentences.push(`Most recently: ${latest.title}${latest.org ? ` at ${latest.org}` : ""}.`);
-  }
+  if (profile.skills.length) sentences.push(`Key skills: ${profile.skills.slice(0, 5).map(s => s.name).filter(Boolean).join(", ")}.`);
+  if (profile.languages.length) sentences.push(`Languages: ${profile.languages.map(l => `${l.language}${l.proficiency ? ` (${l.proficiency})` : ""}`).filter(l => l.trim()).join(", ")}.`);
   if (profile.interests.length) sentences.push(`Outside of work: ${profile.interests.map(i => i.value).join(", ")}.`);
 
   const cvNote = profile.context_notes.find(n => n.label === "Pasted CV / LinkedIn text");
@@ -722,7 +869,15 @@ function initSummary() {
  * ------------------------------------------------------------------- */
 
 function exportProfile() {
-  const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
+  const totalYears = computeTotalYearsExperience(profile.experience);
+  const exportObj = Object.assign({}, profile, {
+    computed: {
+      total_years_experience: totalYears,
+      inferred_seniority: inferSeniority(totalYears),
+      completeness_score: computeCompleteness()
+    }
+  });
+  const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = "profile.json";
@@ -741,32 +896,48 @@ function initFooter() {
 }
 
 function populateDatalists() {
-  const roleList = document.getElementById("role-suggestions");
-  ROLE_KEYWORDS.forEach(r => { const o = document.createElement("option"); o.value = r; roleList.appendChild(o); });
-  const cityList = document.getElementById("city-suggestions");
-  CITY_SUGGESTIONS.forEach(c => { const o = document.createElement("option"); o.value = c; cityList.appendChild(o); });
+  const fill = (id, list) => {
+    const el = document.getElementById(id);
+    list.forEach(v => { const o = document.createElement("option"); o.value = v; el.appendChild(o); });
+  };
+  fill("role-suggestions", ROLE_KEYWORDS);
+  fill("city-suggestions", CITY_SUGGESTIONS);
+  fill("institution-suggestions", INSTITUTION_SEED);
+  fill("company-suggestions", COMPANY_SEED);
+  fill("language-suggestions", COMMON_LANGUAGES);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   const saved = loadProfile();
-  if (saved) profile = saved;
+  if (saved) profile = revalidateProfile(Object.assign(emptyProfile(), saved, {
+    mobility: Object.assign(emptyProfile().mobility, saved.mobility || {}),
+    links: Object.assign(emptyProfile().links, saved.links || {}),
+    preferences: Object.assign(emptyProfile().preferences, saved.preferences || {}),
+    background: Object.assign(emptyProfile().background, saved.background || {})
+  }));
 
   populateDatalists();
   renderRoles();
   renderLevels();
   renderLocations();
-  renderRemote();
-  renderWorkAuth();
   renderAvailability();
   renderIndustries();
   renderCompanies();
   renderPay();
   renderDealbreakers();
   renderInterests();
-  initBackgroundSections();
+  initMobility();
+  initLinksAndStatus();
+  initExperience();
+  initEducation();
+  initSkills();
+  initLanguages();
+  initCertifications();
+  initExtracurriculars();
   const notesRedraw = initNotes();
   initCvScan(notesRedraw);
   renderSummary();
   initSummary();
   initFooter();
+  refreshCompleteness();
 });
