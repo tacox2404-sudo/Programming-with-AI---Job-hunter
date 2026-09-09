@@ -834,17 +834,22 @@ function synthesizeSummary() {
   profile.story = { value: sentences.join(" "), source: usedLean ? "lean" : "stated", evidence: usedLean ? "Includes fields you're still leaning on." : "" };
 }
 
+function growTextarea(el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+
 function renderSummary() {
-  document.getElementById("headline-text").value = profile.headline.value;
+  const headlineEl = document.getElementById("headline-text");
+  headlineEl.value = profile.headline.value;
   document.getElementById("story-text").value = profile.story.value;
   const badgeHost = document.getElementById("headline-badge");
   badgeHost.innerHTML = "";
   badgeHost.appendChild(badgeEl(profile.headline.source));
+  growTextarea(headlineEl);
 }
 
 function initSummary() {
   const headlineInput = document.getElementById("headline-text");
   const storyInput = document.getElementById("story-text");
+  headlineInput.addEventListener("input", () => growTextarea(headlineInput));
   headlineInput.addEventListener("blur", () => {
     profile.headline.value = headlineInput.value.trim();
     profile.headline.source = profile.headline.value ? "stated" : "open";
