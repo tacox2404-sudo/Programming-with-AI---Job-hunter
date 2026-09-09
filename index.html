@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Search Profile Builder</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">Profile Builder</div>
+    <p class="subtitle">Tell us what you're looking for. Nothing here is forced &mdash; "I don't know yet" is a valid answer.</p>
+  </header>
+
+  <main id="app">
+
+    <!-- INTRO / OPTIONAL CV PASTE -->
+    <section id="intro-view" class="view">
+      <div class="card">
+        <h2>Before we start</h2>
+        <p>This takes about five minutes. We'll ask about roles, locations, pay, dealbreakers and a few other
+           things &mdash; one question at a time. Skip anything you're not ready to answer.</p>
+        <p class="muted">Got a CV or LinkedIn summary handy? Paste it in and we'll pull out a few starting
+           suggestions you can confirm or ignore. Completely optional &mdash; nothing gets assumed without you
+           saying yes.</p>
+        <textarea id="cv-paste" rows="6" placeholder="Paste CV text or a LinkedIn summary here (optional)"></textarea>
+        <div class="actions">
+          <button id="cv-scan-btn" class="btn secondary">Scan for suggestions</button>
+          <button id="start-btn" class="btn primary">Start without it &rarr;</button>
+        </div>
+        <div id="cv-suggestions" class="suggestions hidden"></div>
+      </div>
+      <div id="resume-banner" class="card resume-banner hidden">
+        <p>You have a profile already in progress on this device.</p>
+        <div class="actions">
+          <button id="resume-btn" class="btn primary">Resume it</button>
+          <button id="discard-btn" class="btn secondary">Discard &amp; start fresh</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- INTAKE WIZARD -->
+    <section id="intake-view" class="view hidden">
+      <div class="progress"><div id="progress-bar" class="progress-bar"></div></div>
+      <div id="chat-log" class="chat-log"></div>
+      <div id="answer-panel" class="answer-panel"></div>
+    </section>
+
+    <!-- REVIEW / EDIT PAGE -->
+    <section id="review-view" class="view hidden">
+      <div id="review-content"></div>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
