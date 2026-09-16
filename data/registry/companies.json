@@ -483,7 +483,10 @@
     "name": "Affirm Holdings",
     "country": "United States",
     "industry": "",
-    "source": "NASDAQ listing — name only, industry not classified"
+    "source": "NASDAQ listing — name only, industry not classified",
+    "aliases": [
+      "Affirm"
+    ]
   },
   {
     "name": "Aflac",
@@ -8421,7 +8424,10 @@
     "name": "GitLab Inc.",
     "country": "United States",
     "industry": "",
-    "source": "NASDAQ listing — name only, industry not classified"
+    "source": "NASDAQ listing — name only, industry not classified",
+    "aliases": [
+      "GitLab"
+    ]
   },
   {
     "name": "Gladstone Investment Corporation - Business Development Company",
@@ -16563,7 +16569,10 @@
     "name": "Robinhood Markets",
     "country": "United States",
     "industry": "Financials",
-    "source": "S&P 500 index"
+    "source": "S&P 500 index",
+    "aliases": [
+      "Robinhood"
+    ]
   },
   {
     "name": "Robo.ai Inc.",
@@ -21628,6 +21637,39 @@
     "name": "Rolex",
     "country": "Switzerland",
     "industry": "Consumer Discretionary",
+    "source": "Curated — well-known multinational, not from a verified index"
+  },
+  {
+    "name": "Stripe",
+    "country": "United States",
+    "industry": "Financials",
+    "source": "Curated — well-known multinational, not from a verified index"
+  },
+  {
+    "name": "Figma",
+    "country": "United States",
+    "industry": "Information Technology",
+    "source": "Curated — well-known multinational, not from a verified index"
+  },
+  {
+    "name": "Asana",
+    "country": "United States",
+    "industry": "Information Technology",
+    "source": "Curated — well-known multinational, not from a verified index"
+  },
+  {
+    "name": "Instacart",
+    "aliases": [
+      "Maplebear Inc."
+    ],
+    "country": "United States",
+    "industry": "Consumer Discretionary",
+    "source": "Curated — well-known multinational, not from a verified index"
+  },
+  {
+    "name": "Pinterest",
+    "country": "United States",
+    "industry": "Communication Services",
     "source": "Curated — well-known multinational, not from a verified index"
   }
 ]
