@@ -4,6 +4,12 @@ name: Deploy prototype to GitHub Pages
 # load) as-is — no build step, matching the rest of this project. Runs on
 # every push to this working branch so the live link always reflects the
 # latest pushed state, plus manual dispatch for a one-off redeploy.
+#
+# One-time manual step required (repo owner only, GitHub blocks a
+# workflow's own token from creating a repo's Pages site for the first
+# time): Settings -> Pages -> Build and deployment -> Source: "GitHub
+# Actions". After that single click, every future push here redeploys
+# automatically, no further manual steps.
 
 on:
   push:
