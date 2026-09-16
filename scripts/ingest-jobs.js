@@ -48,6 +48,19 @@ COMPANIES_REGISTRY.filter(c => c.industry).forEach(c => {
   companyIndustryByName.set(c.name.toLowerCase(), c.industry);
   (c.aliases || []).forEach(a => companyIndustryByName.set(a.toLowerCase(), c.industry));
 });
+/* A much broader signal than company_industry above: TRUE for any
+   company in the registry at all, including the ~2,982 NASDAQ-listing
+   entries with no GICS sector attached. Industry coverage is under 2%
+   of real postings, but "is this a real, recognizable company" is a
+   much bigger set — this is what a "verified companies" filter on the
+   job board actually uses, since most registry matches don't have an
+   industry to show. */
+const verifiedCompanyNames = new Set();
+COMPANIES_REGISTRY.forEach(c => {
+  verifiedCompanyNames.add(c.name.toLowerCase());
+  (c.aliases || []).forEach(a => verifiedCompanyNames.add(a.toLowerCase()));
+});
+function isVerifiedCompany(name) { return verifiedCompanyNames.has((name || "").toLowerCase()); }
 const locationByCity = new Map(LOCATIONS_REGISTRY.map(l => [l.city.toLowerCase(), l]));
 
 /* Arbeitnow (the largest free source) is Germany-heavy and gives raw
@@ -173,6 +186,7 @@ function normalize(source, raw) {
     title: mapped.title,
     company: mapped.company,
     company_industry: companyIndustryByName.get(mapped.company.toLowerCase()) || "",
+    company_verified: isVerifiedCompany(mapped.company),
     role_family: classifyRoleFamily(mapped.title),
     seniority: classifySeniority(mapped.title),
     employment_type: mapped.employment_type || "",
@@ -232,6 +246,7 @@ function reclassifyExisting(job) {
     role_family: classifyRoleFamily(job.title),
     seniority: classifySeniority(job.title),
     company_industry: companyIndustryByName.get((job.company || "").toLowerCase()) || job.company_industry || "",
+    company_verified: isVerifiedCompany(job.company),
     location_city: canonicalizeLocation(job.location_city, job.work_mode === "Remote")
   });
 }
@@ -301,7 +316,9 @@ function runTest() {
     [(results.find(r => r.company === "3M") || {}).company_industry === "Industrials", "3M should get its real S&P 500 GICS sector (Industrials) from the registry"],
     [(results.find(r => r.company === "3M") || {}).location_city === "Munich, Germany", "'München' should canonicalize to 'Munich, Germany' via the locations registry"],
     [companyIndustryByName.get("pwc") === "Consulting", "curated professional-services firms (PwC) should classify as Consulting, not GICS Industrials"],
-    [companyIndustryByName.get("fti delta") === "Consulting", "a registry alias (FTI Delta -> FTI Consulting) should resolve to the parent's industry"]
+    [companyIndustryByName.get("fti delta") === "Consulting", "a registry alias (FTI Delta -> FTI Consulting) should resolve to the parent's industry"],
+    [(results.find(r => r.company === "3M") || {}).company_verified === true, "3M (a real registry company) should be flagged company_verified"],
+    [(results.find(r => r.company === "Fixture Corp") || {}).company_verified === false, "a made-up fixture company should NOT be flagged company_verified"]
   ];
   const registryFailed = registryChecks.filter(([ok]) => !ok);
   registryFailed.forEach(([, msg]) => console.error("[test] FAIL — " + msg));

@@ -8,10 +8,8 @@
 </head>
 <body>
   <header class="app-header">
-    <div class="brand">Job Board <span class="section-note">prototype</span></div>
-    <p class="subtitle">Backed by <code>data/jobs.json</code>, refreshed by a scheduled ingestion pipeline
-       (see PROTOCOL.md) &mdash; falls back to a small hand-written sample set until that's run at least once.
-       <a href="index.html">&larr; Back to Profile Builder</a></p>
+    <div class="brand">Job Board</div>
+    <p class="subtitle"><a href="index.html">&larr; Profile Builder</a></p>
   </header>
 
   <main id="app">
@@ -21,48 +19,54 @@
     </div>
 
     <div class="card">
-      <h3>Filters</h3>
-      <input id="job-search" type="text" placeholder="Search title, company, description…" style="margin-bottom:14px;" />
-
-      <div class="field" id="match-controls" style="margin-bottom:14px;">
-        <label class="check-chip" id="filter-match-wrap">
-          <input type="checkbox" id="filter-match-toggle" /> Suggest matches from my profile <span class="section-note">extra, optional</span>
+      <input id="job-search" type="text" placeholder="Search title, company, description…" />
+      <div class="quick-filters">
+        <label class="check-chip" id="filter-verified-wrap">
+          <input type="checkbox" id="filter-verified" /> Notable companies only
         </label>
-        <p class="hint">Scores and sorts postings against your saved profile, and offers filter suggestions below.
-           Turn off any time to browse everything independently &mdash; the postings and filters never depend on it.</p>
-        <div id="suggested-filters"></div>
+        <label class="check-chip" id="filter-fincon-wrap">
+          <input type="checkbox" id="filter-fincon" /> Finance &amp; Consulting
+        </label>
       </div>
+      <details id="filters-panel">
+        <summary>More filters <span id="filters-active-count" class="filters-count hidden">0</span></summary>
 
-      <div class="field">
-        <div class="field-label-row"><label class="main-label">Role</label></div>
-        <div id="filter-role"></div>
-      </div>
-      <div class="field">
-        <div class="field-label-row"><label class="main-label">Seniority</label></div>
-        <div id="filter-seniority"></div>
-      </div>
-      <div class="field">
-        <div class="field-label-row"><label class="main-label">Location</label></div>
-        <div id="filter-location"></div>
-      </div>
-      <div class="field">
-        <div class="field-label-row"><label class="main-label">Work mode</label></div>
-        <div id="filter-workmode"></div>
-      </div>
-      <div class="field">
-        <div class="field-label-row"><label class="main-label">Industry</label></div>
-        <p class="hint">Only postings where the company's industry could be verified show up here &mdash; most
-           free-source postings don't have this filled in yet, so this list stays short.</p>
-        <div id="filter-industry"></div>
-      </div>
+        <div class="field" id="match-controls">
+          <label class="check-chip" id="filter-match-wrap">
+            <input type="checkbox" id="filter-match-toggle" /> Suggest matches from my profile <span class="section-note">extra</span>
+          </label>
+          <div id="suggested-filters"></div>
+        </div>
 
-      <label class="check-chip" style="margin-top:6px;">
-        <input type="checkbox" id="filter-show-dealbreakers" /> Show postings that conflict with my dealbreakers
-      </label>
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Role</label></div>
+          <div id="filter-role"></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Seniority</label></div>
+          <div id="filter-seniority"></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Location</label></div>
+          <div id="filter-location"></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Work mode</label></div>
+          <div id="filter-workmode"></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Industry</label></div>
+          <div id="filter-industry"></div>
+        </div>
 
-      <div class="actions">
-        <button id="filter-reset" class="btn small ghost">Reset filters</button>
-      </div>
+        <label class="check-chip" style="margin-top:6px;">
+          <input type="checkbox" id="filter-show-dealbreakers" /> Show postings that conflict with my dealbreakers
+        </label>
+
+        <div class="actions">
+          <button id="filter-reset" class="btn small ghost">Reset filters</button>
+        </div>
+      </details>
     </div>
 
     <div class="card">
@@ -79,6 +83,13 @@
     </div>
 
   </main>
+
+  <div id="job-detail-overlay" class="modal-overlay hidden">
+    <div class="modal-panel">
+      <button id="job-detail-close" class="btn small ghost modal-close">Close</button>
+      <div id="job-detail-body"></div>
+    </div>
+  </div>
 
   <script src="taxonomies.js"></script>
   <script src="jobs.js"></script>

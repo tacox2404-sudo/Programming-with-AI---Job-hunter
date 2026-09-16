@@ -347,3 +347,59 @@ button.chip:hover { background: #e0e7ff; }
 .jobs-table tbody tr:hover { background: #f8fafc; }
 .jobs-table td.job-title-cell { white-space: normal; min-width: 220px; }
 .jobs-table a { color: var(--accent); }
+.jobs-table tbody tr { cursor: pointer; }
+.jobs-table td.verified-cell { color: var(--verified); font-weight: 600; }
+
+/* A bit more color than the neutral gray/blue palette elsewhere: a
+   distinct hue for "verified company" (teal) and one for the
+   Finance & Consulting quick filter (amber) so they read as
+   deliberate accents, not just more gray chips. */
+:root {
+  --verified: #0f766e;
+  --verified-bg: #ccfbf1;
+  --focus: #b45309;
+  --focus-bg: #fef3c7;
+}
+.app-header { background: linear-gradient(135deg, #eef2ff 0%, var(--bg) 70%); border-bottom: 1px solid var(--border); }
+.chip.verified { background: var(--verified-bg); color: var(--verified); }
+.quick-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+#filter-verified-wrap.checked { background: var(--verified-bg); border-color: var(--verified); color: var(--verified); }
+#filter-fincon-wrap.checked { background: var(--focus-bg); border-color: var(--focus); color: var(--focus); }
+
+/* Collapsible filters — closed by default so they don't occupy
+   permanent space; the quick filters above stay outside this and are
+   always visible since they're the fast path. */
+#filters-panel { margin-top: 10px; }
+#filters-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 0;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#filters-panel summary::-webkit-details-marker { display: none; }
+#filters-panel summary::before { content: "▸"; color: var(--muted); transition: transform 0.15s; }
+#filters-panel[open] summary::before { transform: rotate(90deg); }
+#filters-panel[open] summary { border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+.filters-count {
+  background: var(--accent); color: var(--accent-ink); border-radius: 999px;
+  font-size: 0.75rem; padding: 1px 7px; font-weight: 700;
+}
+
+/* Job detail overlay */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(17, 24, 39, 0.5);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 40px 16px; overflow-y: auto; z-index: 50;
+}
+/* .hidden and .modal-overlay have equal specificity — without this,
+   source order alone decides which display value wins, which is too
+   fragile to rely on. */
+.modal-overlay.hidden { display: none; }
+.modal-panel {
+  background: var(--card-bg); border-radius: var(--radius); max-width: 640px;
+  width: 100%; padding: 20px; position: relative; box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+}
+.modal-close { position: absolute; top: 14px; right: 14px; }
