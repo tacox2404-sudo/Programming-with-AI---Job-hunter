@@ -7,14 +7,16 @@
  * free text, never null/undefined (empty string is the "unset" value
  * throughout instead).
  *
- * The *_SEED lists (institutions, companies) are small, illustrative
- * canonical-name lists for the fuzzy-normalize demo below, not a real
- * registry. A real implementation would back this with an actual
- * institution/company/ESCO-skill database — out of scope for a POC.
+ * The *_SEED lists (institutions, companies) are tiny emergency
+ * fallbacks used only if the real registries fail to load — see
+ * data/registry/*.json (10,240 real universities, 562 real companies
+ * with real GICS sectors, 128 real curated locations) loaded async by
+ * app.js/jobs.js. registry.js has the loader + the scale-appropriate
+ * fuzzy-match used against the big lists.
  * ------------------------------------------------------------------- */
 
 const INSTITUTION_TYPES = ["University", "College", "Bootcamp", "Online course / certification", "Vocational school", "High school", "Other"];
-const DEGREE_TYPES = ["High school diploma", "Associate", "Bachelor's", "Master's", "MBA", "PhD", "Professional certificate", "Bootcamp certificate", "Other"];
+const DEGREE_TYPES = ["High school diploma", "Associate", "BSc", "MSc", "MBA", "PhD", "Professional certificate", "Bootcamp certificate", "Other"];
 const GPA_SCALES = ["4.0", "5.0", "10.0", "20.0", "100", "N/A"];
 
 const EMPLOYMENT_TYPES = ["Full-time", "Part-time", "Internship", "Contract", "Freelance", "Volunteer"];
@@ -29,11 +31,18 @@ const COMMON_LANGUAGES = ["English", "Spanish", "French", "German", "Italian", "
 const WORK_MODE_OPTIONS = ["Remote", "Hybrid", "Onsite", "Flexible / no preference"];
 const JOB_SEARCH_STATUS = ["Actively looking", "Open to offers", "Not looking"];
 
+/* The 11 GICS sectors (the real classification standard S&P/MSCI use —
+   see data/registry/companies.json, whose industry field is drawn
+   straight from it) plus three pragmatic additions for sectors GICS
+   structurally doesn't cover at all, since it only classifies publicly
+   traded companies: Education, Government, Non-profit. One shared
+   vocabulary for a profile's stated industry preference AND a job
+   posting's company_industry — same list, same spelling, everywhere. */
 const INDUSTRY_LIST = [
-  "Technology / Software", "Fintech", "Banking & Finance", "Healthcare", "Education",
-  "E-commerce & Retail", "Manufacturing", "Consulting", "Non-profit", "Government",
-  "Media & Entertainment", "Gaming", "Logistics", "Energy", "Insurance", "Telecom",
-  "Pharma & Biotech"
+  "Communication Services", "Consumer Discretionary", "Consumer Staples", "Energy",
+  "Financials", "Health Care", "Industrials", "Information Technology", "Materials",
+  "Real Estate", "Utilities",
+  "Education", "Government", "Non-profit"
 ];
 
 const CITY_SUGGESTIONS = [

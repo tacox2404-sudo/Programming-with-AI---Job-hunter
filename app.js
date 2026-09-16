@@ -52,6 +52,8 @@ function emptyProfile() {
 
 let profile = emptyProfile();
 let idSeq = 1;
+let universitiesIndex = null;
+let companiesIndex = null;
 function nextId() { return "e" + (idSeq++) + "_" + Date.now().toString(36); }
 
 /* Re-validate every enum-backed field against its taxonomy. Called once
@@ -159,9 +161,17 @@ function buildTagInput(container, values, onChange, opts) {
   opts = opts || {};
   const wrap = document.createElement("div");
   wrap.className = "chip-input";
-  const knownList = opts.knownValues ? opts.knownValues.map(v => v.toLowerCase()) : null;
+  // opts.knownValues may be an array (snapshot) or a function (re-read
+  // fresh on every redraw) — the latter is how the locations field
+  // picks up the real registry once it finishes loading a moment after
+  // this input was first built.
+  function currentKnownList() {
+    const kv = typeof opts.knownValues === "function" ? opts.knownValues() : opts.knownValues;
+    return kv ? kv.map(v => v.toLowerCase()) : null;
+  }
 
   function redraw() {
+    const knownList = currentKnownList();
     wrap.querySelectorAll(".chip").forEach(c => c.remove());
     values.forEach((v, i) => {
       const chip = document.createElement("span");
@@ -258,13 +268,19 @@ function renderLevels() {
   refresh();
 }
 
+let locationsHooks = null;
 function renderLocations() {
   const host = document.getElementById("field-locations");
   const row = host.querySelector(".field-label-row");
   const field = profile.preferences.locations;
-  buildTagInput(host, field.value, () => refresh(), { datalistId: "city-suggestions", knownValues: CITY_SUGGESTIONS, placeholder: "Pick or type a city — Enter to add" });
+  const redraw = buildTagInput(host, field.value, () => refresh(), {
+    datalistId: "city-suggestions",
+    knownValues: () => (LOCATIONS.length ? LOCATIONS.map(l => l.display) : CITY_SUGGESTIONS),
+    placeholder: "Pick or type a city — Enter to add"
+  });
   const refresh = attachFieldChrome(row, field, () => field.value.length === 0);
   refresh();
+  locationsHooks = { redraw };
 }
 
 function renderAvailability() {
@@ -510,7 +526,30 @@ function renderEntityList(entries, containerId, fieldDefs, describeEmpty, onChan
         if (f.datalistId) inp.setAttribute("list", f.datalistId);
         inp.addEventListener("blur", () => {
           let v = inp.value.trim();
-          if (f.normalizeAgainst) {
+          let needsRedraw = false;
+          if (f.registryKind === "institution" && v && UNIVERSITIES.length) {
+            const result = normalizeAgainstRegistry(v, UNIVERSITIES, u => u.name, universitiesIndex);
+            if (result.matched) {
+              v = result.canonical;
+              inp.value = v;
+              toast(result.entry ? `Verified: "${v}" (${result.entry.country})` : `Normalized to "${v}"`);
+            }
+          } else if (f.registryKind === "company" && v && COMPANIES.length) {
+            const result = normalizeAgainstRegistry(v, COMPANIES, c => c.name, companiesIndex);
+            if (result.matched) {
+              v = result.canonical;
+              inp.value = v;
+              if (result.entry) {
+                toast(`Verified: "${v}" (${result.entry.country} · ${result.entry.industry})`);
+                if (!entry.company_industry && INDUSTRY_LIST.includes(result.entry.industry)) {
+                  entry.company_industry = result.entry.industry;
+                  needsRedraw = true; // the industry <select> only reflects this on a full redraw
+                }
+              } else {
+                toast(`Normalized to "${v}"`);
+              }
+            }
+          } else if (f.normalizeAgainst) {
             const result = normalizeAgainstList(v, f.normalizeAgainst);
             if (result.matched && result.canonical !== v) {
               v = result.canonical;
@@ -524,6 +563,7 @@ function renderEntityList(entries, containerId, fieldDefs, describeEmpty, onChan
             if (dup) toast(`Heads up — "${v}" is already in this list.`);
           }
           saveProfile(); onChange && onChange(); refreshCompleteness();
+          if (needsRedraw) redraw();
         });
         grid.appendChild(inp);
       });
@@ -549,7 +589,7 @@ let experienceHooks = null;
 function initExperience() {
   const redraw = renderEntityList(profile.experience, "experience-list", [
     { key: "title", label: "Job title" },
-    { key: "company", label: "Company", normalizeAgainst: COMPANY_SEED, datalistId: "company-suggestions" },
+    { key: "company", label: "Company", registryKind: "company", datalistId: "company-suggestions" },
     { key: "company_industry", label: "Industry…", type: "select", options: INDUSTRY_LIST },
     { key: "employment_type", label: "Employment type…", type: "select", options: EMPLOYMENT_TYPES },
     { key: "seniority", label: "Seniority…", type: "select", options: SENIORITY_LEVELS },
@@ -574,7 +614,7 @@ function initExperience() {
 let educationHooks = null;
 function initEducation() {
   const redraw = renderEntityList(profile.education, "education-list", [
-    { key: "institution", label: "Institution", normalizeAgainst: INSTITUTION_SEED, datalistId: "institution-suggestions" },
+    { key: "institution", label: "Institution", registryKind: "institution", datalistId: "institution-suggestions" },
     { key: "institution_type", label: "Institution type…", type: "select", options: INSTITUTION_TYPES },
     { key: "degree_type", label: "Degree type…", type: "select", options: DEGREE_TYPES },
     { key: "field_of_study", label: "Field of study" },
@@ -1107,16 +1147,22 @@ function initFooter() {
   });
 }
 
+/* Idempotent on purpose: called once at startup with the small
+   immediate fallbacks (so the datalists aren't empty during the brief
+   window before the real registry loads), then called again once
+   loadRegistry() resolves — clearing first means the second call
+   replaces rather than duplicates the options. */
 function populateDatalists() {
   const fill = (id, list) => {
     const el = document.getElementById(id);
+    el.innerHTML = "";
     list.forEach(v => { const o = document.createElement("option"); o.value = v; el.appendChild(o); });
   };
   fill("role-suggestions", ROLE_KEYWORDS);
-  fill("city-suggestions", CITY_SUGGESTIONS);
-  fill("institution-suggestions", INSTITUTION_SEED);
-  fill("company-suggestions", COMPANY_SEED);
   fill("language-suggestions", COMMON_LANGUAGES);
+  fill("city-suggestions", LOCATIONS.length ? LOCATIONS.map(l => l.display) : CITY_SUGGESTIONS);
+  fill("institution-suggestions", UNIVERSITIES.length ? UNIVERSITIES.map(u => u.name) : INSTITUTION_SEED);
+  fill("company-suggestions", COMPANIES.length ? COMPANIES.map(c => c.name) : COMPANY_SEED);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -1153,4 +1199,17 @@ document.addEventListener("DOMContentLoaded", () => {
   initSummary();
   initFooter();
   refreshCompleteness();
+
+  // Real registries load async and take a moment; the form is fully
+  // usable before this resolves, it just verifies/datalist-completes
+  // once the real data is in. See registry.js.
+  loadRegistry().then(() => {
+    universitiesIndex = buildPrefixIndex(UNIVERSITIES, u => u.name);
+    companiesIndex = buildPrefixIndex(COMPANIES, c => c.name);
+    populateDatalists();
+    if (locationsHooks) locationsHooks.redraw();
+    if (UNIVERSITIES.length || COMPANIES.length) {
+      toast(`Loaded ${UNIVERSITIES.length.toLocaleString()} universities, ${COMPANIES.length.toLocaleString()} companies, ${LOCATIONS.length} locations.`);
+    }
+  });
 });
