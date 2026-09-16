@@ -32,12 +32,17 @@ jobs:
 
       - name: Commit updated dataset if it changed
         run: |
-          if git diff --quiet -- data/jobs.json; then
+          # `git diff` alone misses a brand-new untracked file (no prior
+          # blob to diff against), which is exactly data/jobs.json's state
+          # before the very first successful run — stage first, then check
+          # the index against HEAD so both "new file" and "modified" cases
+          # are caught.
+          git add data/jobs.json
+          if git diff --cached --quiet -- data/jobs.json; then
             echo "No changes to data/jobs.json — nothing to commit."
             exit 0
           fi
           git config user.name "job-ingest-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/jobs.json
           git commit -m "Ingest job postings ($(date -u +%Y-%m-%d))"
           git push
