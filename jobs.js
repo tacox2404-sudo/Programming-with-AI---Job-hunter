@@ -230,12 +230,16 @@ let currentProfile = null;
 let viewMode = "cards"; // "cards" | "table"
 const tableSort = { key: "posted_date", dir: "desc" };
 
-/* Quick filter, not a real registry-backed classification — just the
-   role_family/industry values most relevant to "get the finance and
-   consulting ones first", requested since the dataset is small enough
-   that scrolling past everything else to find them is real friction. */
+/* Quick filter for "get the finance and consulting ones first" — role
+   only, not company industry. Industry describes what the EMPLOYER
+   does, not what THIS posting is for: a fintech's industry is
+   Financials, but most of its postings are still Software Engineer,
+   Product Manager, etc. Matching on industry made a fintech's entire
+   engineering org show up as "Finance & Consulting" (651 Stripe
+   postings counted, only 13 of them were actually finance-family
+   roles) — caught by actually checking the real numbers, not assumed
+   correct just because it ran without errors. */
 const FINANCE_CONSULTING_ROLES = new Set(["Financial analyst", "Accountant", "Consultant", "Business analyst"]);
-const FINANCE_CONSULTING_INDUSTRIES = new Set(["Financials", "Consulting"]);
 
 function jobPassesFilters(job) {
   if (filters.search) {
@@ -248,7 +252,7 @@ function jobPassesFilters(job) {
   if (filters.work_mode.size && !filters.work_mode.has(job.work_mode)) return false;
   if (filters.company_industry.size && !filters.company_industry.has(job.company_industry)) return false;
   if (filters.companyVerified && !job.company_verified) return false;
-  if (filters.finCon && !(FINANCE_CONSULTING_ROLES.has(job.role_family) || FINANCE_CONSULTING_INDUSTRIES.has(job.company_industry))) return false;
+  if (filters.finCon && !FINANCE_CONSULTING_ROLES.has(job.role_family)) return false;
   return true;
 }
 
