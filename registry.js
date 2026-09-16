@@ -83,6 +83,15 @@ function normalizeAgainstRegistry(input, list, keyFn, prefixIndex) {
   const exact = list.find(item => (keyFn(item) || "").toLowerCase() === lower);
   if (exact) return { canonical: keyFn(exact), matched: true, entry: exact };
 
+  /* A handful of registry entries carry a small `aliases` array — a
+     brand/practice name too different from the parent's legal name for
+     fuzzy matching to bridge (e.g. "FTI Delta" is FTI Consulting's
+     strategy practice; the edit distance is much too large to be a
+     typo). Checked as its own exact pass before falling back to fuzzy
+     matching on the primary name. */
+  const aliasExact = list.find(item => Array.isArray(item.aliases) && item.aliases.some(a => (a || "").toLowerCase() === lower));
+  if (aliasExact) return { canonical: keyFn(aliasExact), matched: true, entry: aliasExact };
+
   const expanded = expandAbbreviations(trimmed);
   const bucket = (prefixIndex && prefixIndex.get(lower.charAt(0))) || list;
   let best = null, bestDist = Infinity;

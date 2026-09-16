@@ -39,9 +39,15 @@ const LOCATIONS_REGISTRY = JSON.parse(fs.readFileSync(path.join(__dirname, "..",
    the profile side's registry.js. A wrong fuzzy match silently mislabels
    a real posting's industry; an exact-match miss just leaves it blank,
    which is the honest outcome when ingestion can't verify something. */
-const companyIndustryByName = new Map(
-  COMPANIES_REGISTRY.filter(c => c.industry).map(c => [c.name.toLowerCase(), c.industry])
-);
+/* A few entries carry a small `aliases` array (a brand/practice name
+   too different from the parent's legal name for fuzzy matching to
+   bridge, e.g. "FTI Delta" -> FTI Consulting) — indexed here under the
+   same industry as their parent so an exact lookup on either resolves. */
+const companyIndustryByName = new Map();
+COMPANIES_REGISTRY.filter(c => c.industry).forEach(c => {
+  companyIndustryByName.set(c.name.toLowerCase(), c.industry);
+  (c.aliases || []).forEach(a => companyIndustryByName.set(a.toLowerCase(), c.industry));
+});
 const locationByCity = new Map(LOCATIONS_REGISTRY.map(l => [l.city.toLowerCase(), l]));
 
 /* Arbeitnow (the largest free source) is Germany-heavy and gives raw
@@ -230,6 +236,25 @@ function reclassifyExisting(job) {
   });
 }
 
+/* None of these free sources give a real closing/expiry date — only
+   posted_date. Re-checking whether an old posting is still live would
+   mean re-fetching and diffing against the source, which we already do
+   every run anyway (a posting that's gone just won't be in `results`
+   again). What we DON'T do today is ever remove a posting that stops
+   reappearing — it just sits there, undated as far as the user can
+   tell, forever. EXPIRY_DAYS is a blunt but honest stand-in: a
+   professional-role posting older than this is more likely filled or
+   withdrawn than still open, so it's dropped outright rather than kept
+   and re-verified (which we have no way to actually do). */
+const EXPIRY_DAYS = 45;
+function isExpired(job) {
+  if (!job.posted_date) return false; // unknown age — don't guess, don't drop
+  const posted = new Date(job.posted_date);
+  if (isNaN(posted.getTime())) return false;
+  const ageDays = (Date.now() - posted.getTime()) / (1000 * 60 * 60 * 24);
+  return ageDays > EXPIRY_DAYS;
+}
+
 async function runLive() {
   const results = [];
   for (const source of SOURCES) {
@@ -246,12 +271,15 @@ async function runLive() {
     }
   }
   const rawExisting = loadExisting();
-  const existing = rawExisting.map(reclassifyExisting).filter(Boolean);
-  const staleDropped = rawExisting.length - existing.length;
-  const { merged, added, updated } = mergeJobs(existing, results);
+  const reclassified = rawExisting.map(reclassifyExisting).filter(Boolean);
+  const nonProfessionalDropped = rawExisting.length - reclassified.length;
+  const existing = reclassified.filter(j => !isExpired(j));
+  const expiredDropped = reclassified.length - existing.length;
+  const freshResults = results.filter(j => !isExpired(j));
+  const { merged, added, updated } = mergeJobs(existing, freshResults);
   fs.mkdirSync(path.dirname(DATA_PATH), { recursive: true });
   fs.writeFileSync(DATA_PATH, JSON.stringify(merged, null, 2) + "\n");
-  console.log(`Reclassified ${existing.length} existing postings against current rules (${staleDropped} dropped as non-professional).`);
+  console.log(`Reclassified ${reclassified.length} existing postings against current rules (${nonProfessionalDropped} dropped as non-professional, ${expiredDropped} dropped as older than ${EXPIRY_DAYS} days).`);
   console.log(`data/jobs.json: ${added} new, ${updated} refreshed, ${merged.length} total.`);
 }
 
@@ -271,7 +299,9 @@ function runTest() {
     [results.length === 5, "expected 5 normalized postings (6 fixtures minus 1 excluded apprenticeship)"],
     [!results.some(r => /ausbildung/i.test(r.title)), "the apprenticeship fixture must be excluded, not just unclassified"],
     [(results.find(r => r.company === "3M") || {}).company_industry === "Industrials", "3M should get its real S&P 500 GICS sector (Industrials) from the registry"],
-    [(results.find(r => r.company === "3M") || {}).location_city === "Munich, Germany", "'München' should canonicalize to 'Munich, Germany' via the locations registry"]
+    [(results.find(r => r.company === "3M") || {}).location_city === "Munich, Germany", "'München' should canonicalize to 'Munich, Germany' via the locations registry"],
+    [companyIndustryByName.get("pwc") === "Consulting", "curated professional-services firms (PwC) should classify as Consulting, not GICS Industrials"],
+    [companyIndustryByName.get("fti delta") === "Consulting", "a registry alias (FTI Delta -> FTI Consulting) should resolve to the parent's industry"]
   ];
   const registryFailed = registryChecks.filter(([ok]) => !ok);
   registryFailed.forEach(([, msg]) => console.error("[test] FAIL — " + msg));
@@ -305,6 +335,19 @@ function runTest() {
   reclassifyFailed.forEach(([, msg]) => console.error("[test] FAIL — " + msg));
   console.log(reclassifyFailed.length ? `[test] ${reclassifyFailed.length} reclassify check(s) failed.` : "[test] PASS — reclassifyExisting refreshes and retroactively cleans stale postings.");
   if (reclassifyFailed.length) process.exitCode = 1;
+
+  const oldPosting = Object.assign({}, results[0], { posted_date: "2020-01-01" });
+  const freshPosting = Object.assign({}, results[0], { posted_date: new Date().toISOString().slice(0, 10) });
+  const undatedPosting = Object.assign({}, results[0], { posted_date: "" });
+  const expiryChecks = [
+    [isExpired(oldPosting) === true, "a posting far older than EXPIRY_DAYS must be treated as expired"],
+    [isExpired(freshPosting) === false, "a posting from today must not be treated as expired"],
+    [isExpired(undatedPosting) === false, "a posting with no posted_date must not be guessed as expired — unknown stays unknown"]
+  ];
+  const expiryFailed = expiryChecks.filter(([ok]) => !ok);
+  expiryFailed.forEach(([, msg]) => console.error("[test] FAIL — " + msg));
+  console.log(expiryFailed.length ? `[test] ${expiryFailed.length} expiry check(s) failed.` : "[test] PASS — expired postings are dropped outright, not re-verified.");
+  if (expiryFailed.length) process.exitCode = 1;
 }
 
 const args = process.argv.slice(2);

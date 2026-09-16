@@ -29,9 +29,11 @@ const {
 } = require("../taxonomies.js");
 
 const COMPANIES_REGISTRY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "data", "registry", "companies.json"), "utf8"));
-const companyIndustryByName = new Map(
-  COMPANIES_REGISTRY.filter(c => c.industry).map(c => [c.name.toLowerCase(), c.industry])
-);
+const companyIndustryByName = new Map();
+COMPANIES_REGISTRY.filter(c => c.industry).forEach(c => {
+  companyIndustryByName.set(c.name.toLowerCase(), c.industry);
+  (c.aliases || []).forEach(a => companyIndustryByName.set(a.toLowerCase(), c.industry));
+});
 
 let idSeq = 1;
 function nextId() { return "conv" + (idSeq++); }

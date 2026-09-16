@@ -33,16 +33,22 @@ const JOB_SEARCH_STATUS = ["Actively looking", "Open to offers", "Not looking"];
 
 /* The 11 GICS sectors (the real classification standard S&P/MSCI use —
    see data/registry/companies.json, whose industry field is drawn
-   straight from it) plus three pragmatic additions for sectors GICS
-   structurally doesn't cover at all, since it only classifies publicly
-   traded companies: Education, Government, Non-profit. One shared
+   straight from it) plus four pragmatic additions for cases GICS
+   structurally doesn't give a useful answer for: Education, Government,
+   and Non-profit (GICS only classifies publicly traded companies), and
+   Consulting. GICS technically files management/strategy consulting
+   under Industrials -> Commercial & Professional Services, but showing
+   PwC or McKinsey as "Industrials" reads as wrong to anyone looking at
+   their own profile, even though it's the textbook-correct sector — so
+   consulting/professional-services firms get their own value here
+   instead, same as the other three practical carve-outs. One shared
    vocabulary for a profile's stated industry preference AND a job
    posting's company_industry — same list, same spelling, everywhere. */
 const INDUSTRY_LIST = [
   "Communication Services", "Consumer Discretionary", "Consumer Staples", "Energy",
   "Financials", "Health Care", "Industrials", "Information Technology", "Materials",
   "Real Estate", "Utilities",
-  "Education", "Government", "Non-profit"
+  "Consulting", "Education", "Government", "Non-profit"
 ];
 
 const CITY_SUGGESTIONS = [
