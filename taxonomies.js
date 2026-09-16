@@ -57,6 +57,8 @@ const FLEXIBILITY_OPTIONS = ["Immediately", "Within 2 weeks", "Within 1 month", 
 
 const LEVELS = ["Internship", "Graduate scheme / trainee", "Entry-level", "Junior", "Associate", "Other"];
 
+const DOCUMENT_TYPES = ["Cover letter", "Resume / CV variant", "Achievement bank", "Recommendation / reference note", "Other"];
+
 const ROLE_KEYWORDS = [
   "software engineer", "data analyst", "data scientist", "product manager",
   "marketing", "sales", "business analyst", "financial analyst", "accountant",

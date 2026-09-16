@@ -45,7 +45,8 @@ function emptyProfile() {
     languages: [],
     certifications: [],
     background: { extracurriculars: [] },
-    context_notes: []
+    context_notes: [],
+    documents: []
   };
 }
 
@@ -85,6 +86,7 @@ function revalidateProfile(p) {
     s.proficiency = coerceEnum(s.proficiency, PROFICIENCY_LEVELS);
   });
   p.languages.forEach(l => { l.proficiency = coerceEnum(l.proficiency, LANGUAGE_PROFICIENCY); });
+  p.documents.forEach(d => { d.doc_type = coerceEnum(d.doc_type, DOCUMENT_TYPES); });
   return p;
 }
 
@@ -517,6 +519,10 @@ function renderEntityList(entries, containerId, fieldDefs, describeEmpty, onChan
             }
           }
           entry[f.key] = v;
+          if (f.dedupeSiblings && v) {
+            const dup = entries.some((other, oi) => oi !== idx && (other[f.key] || "").trim().toLowerCase() === v.toLowerCase());
+            if (dup) toast(`Heads up — "${v}" is already in this list.`);
+          }
           saveProfile(); onChange && onChange(); refreshCompleteness();
         });
         grid.appendChild(inp);
@@ -539,6 +545,7 @@ function renderEntityList(entries, containerId, fieldDefs, describeEmpty, onChan
   return redraw;
 }
 
+let experienceHooks = null;
 function initExperience() {
   const redraw = renderEntityList(profile.experience, "experience-list", [
     { key: "title", label: "Job title" },
@@ -561,8 +568,10 @@ function initExperience() {
     });
     saveProfile(); redraw(); refreshCompleteness();
   });
+  experienceHooks = { redraw };
 }
 
+let educationHooks = null;
 function initEducation() {
   const redraw = renderEntityList(profile.education, "education-list", [
     { key: "institution", label: "Institution", normalizeAgainst: INSTITUTION_SEED, datalistId: "institution-suggestions" },
@@ -581,11 +590,12 @@ function initEducation() {
     });
     saveProfile(); redraw(); refreshCompleteness();
   });
+  educationHooks = { redraw };
 }
 
 function initSkills() {
   const redraw = renderEntityList(profile.skills, "skills-list", [
-    { key: "name", label: "Skill name" },
+    { key: "name", label: "Skill name", dedupeSiblings: true },
     { key: "category", label: "Category…", type: "select", options: SKILL_CATEGORIES },
     { key: "proficiency", label: "Proficiency…", type: "select", options: PROFICIENCY_LEVELS },
     { key: "years_experience", label: "Years of experience" }
@@ -598,7 +608,7 @@ function initSkills() {
 
 function initLanguages() {
   const redraw = renderEntityList(profile.languages, "languages-list", [
-    { key: "language", label: "Language", datalistId: "language-suggestions" },
+    { key: "language", label: "Language", datalistId: "language-suggestions", dedupeSiblings: true },
     { key: "proficiency", label: "Proficiency (CEFR)…", type: "select", options: LANGUAGE_PROFICIENCY }
   ], "No languages added yet.");
   document.getElementById("add-language").addEventListener("click", () => {
@@ -609,7 +619,7 @@ function initLanguages() {
 
 function initCertifications() {
   const redraw = renderEntityList(profile.certifications, "certifications-list", [
-    { key: "name", label: "Certification name" },
+    { key: "name", label: "Certification name", dedupeSiblings: true },
     { key: "issuer", label: "Issuer (e.g. AWS, Google)" },
     { key: "date", label: "Date", type: "month" },
     { key: "credential_id", label: "Credential ID (optional)" }
@@ -628,6 +638,18 @@ function initExtracurriculars() {
   ], "No extracurriculars added yet.");
   document.getElementById("add-extracurricular").addEventListener("click", () => {
     profile.background.extracurriculars.push({ id: nextId(), name: "", role: "", description: "" });
+    saveProfile(); redraw(); refreshCompleteness();
+  });
+}
+
+function initDocuments() {
+  const redraw = renderEntityList(profile.documents, "documents-list", [
+    { key: "title", label: "Title (e.g. \"Cover letter — Google BA intern\")" },
+    { key: "doc_type", label: "Type…", type: "select", options: DOCUMENT_TYPES },
+    { key: "content", label: "Full text — paste or write it here", type: "textarea" }
+  ], "No documents saved yet.");
+  document.getElementById("add-document").addEventListener("click", () => {
+    profile.documents.push({ id: nextId(), title: "", doc_type: "", content: "" });
     saveProfile(); redraw(); refreshCompleteness();
   });
 }
@@ -686,14 +708,110 @@ function scanCvText(text) {
   return { roles: [...new Set(ROLE_KEYWORDS.filter(k => lower.includes(k)))] };
 }
 
+/* ---------------------------------------------------------------------
+ * Heuristic experience/education block detection in pasted CV text.
+ * Deterministic pattern matching, not real parsing: a line containing a
+ * date range starts a new candidate entry; following non-date lines are
+ * appended as details until the next date range or the text ends. Never
+ * guesses a title/company split (too easy to get backwards) — the whole
+ * headline lands in one field and the user edits from there. Nothing is
+ * added to the profile until the user clicks a suggestion card.
+ * ------------------------------------------------------------------- */
+
+const MONTH_MAP = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+const DATE_RANGE_RE = /((?:[A-Za-z]{3,9}\.?\s+\d{4})|\d{4})\s*(?:[-–—]|to)\s*((?:[A-Za-z]{3,9}\.?\s+\d{4})|\d{4}|present|current|now)/i;
+const EDUCATION_HINT_RE = /university|college|bachelor|master|phd|b\.sc|m\.sc|mba|degree|gpa|bootcamp/i;
+
+function parseMonthYear(str) {
+  const s = (str || "").trim().toLowerCase();
+  if (!s) return "";
+  if (/present|current|now/.test(s)) return "present";
+  let m = /([a-z]{3,9})\.?\s+(\d{4})/.exec(s);
+  if (m && MONTH_MAP[m[1].slice(0, 3)]) return `${m[2]}-${String(MONTH_MAP[m[1].slice(0, 3)]).padStart(2, "0")}`;
+  m = /^(\d{4})$/.exec(s);
+  if (m) return `${m[1]}-01`;
+  return "";
+}
+
+function scanCvBlocks(text) {
+  // Blank lines are treated as hard boundaries between entries (very common
+  // in pasted CV/LinkedIn text). Lines seen before a date line are held as
+  // "pending" title/org candidates in case the date sits on its own line,
+  // rather than sharing a line with the title (both layouts are common).
+  const rawLines = text.split(/\n/).map(l => l.trim());
+  const results = [];
+  let current = null;
+  let pendingLines = [];
+  function closeCurrent() { if (current) { results.push(current); current = null; } }
+
+  rawLines.forEach(line => {
+    if (!line) { closeCurrent(); pendingLines = []; return; }
+    const m = DATE_RANGE_RE.exec(line);
+    if (m) {
+      closeCurrent();
+      const start = parseMonthYear(m[1]);
+      const endRaw = m[2];
+      const end = /present|current|now/i.test(endRaw) ? "present" : parseMonthYear(endRaw);
+      const remainder = line.replace(m[0], "").replace(/[-–—,•|]+\s*$/, "").trim();
+      const headline = pendingLines.length
+        ? pendingLines.join(" — ") + (remainder ? " — " + remainder : "")
+        : (remainder || line);
+      const isEducation = EDUCATION_HINT_RE.test(line) || pendingLines.some(l => EDUCATION_HINT_RE.test(l));
+      current = { type: isEducation ? "education" : "work", titleLine: headline, start, end, details: "" };
+      pendingLines = [];
+    } else if (current) {
+      current.details = (current.details ? current.details + " " : "") + line.replace(/^[•\-*]\s*/, "");
+    } else {
+      pendingLines.push(line);
+      if (pendingLines.length > 4) pendingLines.shift();
+    }
+  });
+  closeCurrent();
+  return results.slice(0, 12);
+}
+
+function addSuggestedEntry(block) {
+  if (block.type === "education") {
+    profile.education.push({
+      id: nextId(), institution: block.titleLine, institution_type: "", degree_type: "",
+      field_of_study: "", gpa: "", gpa_scale: "",
+      start: block.start === "present" ? "" : block.start,
+      end: block.end === "present" ? "" : block.end
+    });
+    saveProfile();
+    if (educationHooks) educationHooks.redraw();
+  } else {
+    profile.experience.push({
+      id: nextId(), title: block.titleLine, company: "", company_industry: "",
+      employment_type: "", seniority: "", location_city: "", location_country: "",
+      start: block.start === "present" ? "" : block.start,
+      end: block.end === "present" ? "" : block.end,
+      is_current: block.end === "present", description: block.details
+    });
+    saveProfile();
+    if (experienceHooks) experienceHooks.redraw();
+  }
+  refreshCompleteness();
+}
+
 function initCvScan(notesRedraw) {
   document.getElementById("cv-scan-btn").addEventListener("click", () => {
     const text = document.getElementById("cv-paste").value.trim();
     if (!text) { toast("Paste something first."); return; }
     const found = scanCvText(text);
+    const blocks = scanCvBlocks(text).filter(b => {
+      const key = b.titleLine.trim().toLowerCase();
+      if (!key) return false;
+      return b.type === "education"
+        ? !profile.education.some(e => (e.institution || "").trim().toLowerCase() === key)
+        : !profile.experience.some(e => (e.title || "").trim().toLowerCase() === key);
+    });
     const box = document.getElementById("cv-suggestions");
     box.innerHTML = "";
+    let any = false;
+
     if (found.roles.length) {
+      any = true;
       const group = document.createElement("div");
       group.className = "suggestion-group";
       const h4 = document.createElement("h4");
@@ -713,8 +831,54 @@ function initCvScan(notesRedraw) {
         group.appendChild(btn);
       });
       box.appendChild(group);
-    } else {
-      box.innerHTML = "<p class=\"muted\">Nothing obvious matched — that's fine, add roles manually below.</p>";
+    }
+
+    if (blocks.length) {
+      any = true;
+      const group = document.createElement("div");
+      group.className = "suggestion-group";
+      const h4 = document.createElement("h4");
+      h4.textContent = "Experience & education entries we spotted — review before adding";
+      group.appendChild(h4);
+      blocks.forEach(block => {
+        const card = document.createElement("div");
+        card.className = "entry-card";
+        const strong = document.createElement("div");
+        strong.style.fontWeight = "600";
+        strong.textContent = block.titleLine;
+        const meta = document.createElement("p");
+        meta.className = "muted";
+        meta.style.margin = "2px 0 8px";
+        const dateText = (block.start || block.end) ? [block.start, block.end].filter(Boolean).join(" – ") : "dates not detected";
+        meta.textContent = `Guessed as ${block.type === "education" ? "education" : "work experience"} • ${dateText}`;
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        const addBtn = document.createElement("button");
+        addBtn.type = "button";
+        addBtn.className = "btn small secondary";
+        addBtn.textContent = block.type === "education" ? "Add as education" : "Add as work experience";
+        addBtn.addEventListener("click", () => {
+          addSuggestedEntry(block);
+          card.remove();
+          toast("Added — review and fill in the rest below.");
+        });
+        const dismissBtn = document.createElement("button");
+        dismissBtn.type = "button";
+        dismissBtn.className = "btn small ghost";
+        dismissBtn.textContent = "Not relevant";
+        dismissBtn.addEventListener("click", () => card.remove());
+        actions.appendChild(addBtn);
+        actions.appendChild(dismissBtn);
+        card.appendChild(strong);
+        card.appendChild(meta);
+        card.appendChild(actions);
+        group.appendChild(card);
+      });
+      box.appendChild(group);
+    }
+
+    if (!any) {
+      box.innerHTML = "<p class=\"muted\">Nothing obvious matched — that's fine, add entries manually below.</p>";
     }
     box.classList.remove("hidden");
 
@@ -753,7 +917,8 @@ function computeCompleteness() {
     p.languages.length > 0,
     !!p.links.linkedin,
     !!p.job_search_status,
-    p.interests.length > 0
+    p.interests.length > 0,
+    p.documents.length > 0
   ];
   const filled = checks.filter(Boolean).length;
   return Math.round((filled / checks.length) * 100);
@@ -939,6 +1104,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initLanguages();
   initCertifications();
   initExtracurriculars();
+  initDocuments();
   const notesRedraw = initNotes();
   initCvScan(notesRedraw);
   renderSummary();
