@@ -86,24 +86,49 @@ const ROLE_FAMILIES = [
    match wins. A title that matches nothing is left "" rather than
    guessed — an unclassified posting is still shown, just not filterable
    on that axis, which is honest; a wrong guess would be worse. */
+/* Expanded against 285 real ingested postings (see PROTOCOL.md) — the
+   English-only v1 list classified 44% of real titles; German terms
+   below (Arbeitnow, the largest free source, is EU/Germany-heavy) and
+   a wider IT-engineering net account for most of what v1 missed. */
 const ROLE_FAMILY_KEYWORDS = {
   "Business analyst": ["business analyst", "biz analyst"],
-  "Software engineer": ["software engineer", "backend", "front end", "frontend", "full stack", "full-stack", "swe", "developer", "programmer"],
+  "Software engineer": [
+    "software engineer", "backend", "front end", "frontend", "full stack", "full-stack", "swe",
+    "developer", "programmer", "cloud engineer", "devops", "site reliability", " sre ",
+    "platform engineer", "infrastructure engineer", "system engineer", "systems engineer",
+    "network engineer", "it engineer", "it-systemadministrator", "systemadministrator",
+    "fachinformatiker"
+  ],
   "Data scientist": ["data scientist", "machine learning engineer", "ml engineer"],
   "Data analyst": ["data analyst"],
-  "Product manager": ["product manager", "product owner"],
+  "Product manager": ["product manager", "product owner", "produktentwickler"],
   "Financial analyst": ["financial analyst", "finance analyst"],
-  "Accountant": ["accountant", "accounting"],
-  "Consultant": ["consultant", "consulting"],
-  "Project manager": ["project manager", "program manager", "delivery manager"],
+  "Accountant": ["accountant", "accounting", "finanzbuchhalter", "buchhaltung", "steuerberater"],
+  "Consultant": ["consultant", "consulting", "unternehmensberater", "berater"],
+  "Project manager": ["project manager", "program manager", "delivery manager", "projektleiter", "projektleitung"],
   "Customer success": ["customer success", "customer support", "account manager"],
-  "HR / Recruiting": ["recruiter", "human resources", "hr generalist", "talent acquisition"],
+  "HR / Recruiting": [
+    "recruiter", "human resources", "hr generalist", "talent acquisition", "hr administrator",
+    "people & culture", "personalwesen", "personalreferent"
+  ],
   "Research": ["research analyst", "researcher", "research scientist"],
-  "Designer": ["designer", "ux ", "ui designer"],
+  "Designer": ["designer", "ux ", "ui designer", "grafiker", "kommunikationsdesign"],
   "Operations": ["operations", "ops analyst", "ops manager"],
-  "Marketing": ["marketing"],
+  "Marketing": ["marketing", "social media manager", "content creator", "growth manager"],
   "Sales": ["sales", "account executive", "business development"]
 };
+
+/* Postings whose title matches one of these are dropped entirely
+   during ingestion (see scripts/ingest-jobs.js) — vocational
+   apprenticeships and casual/blue-collar shift work, not the
+   professional roles this project targets. Deliberately narrow: only
+   unambiguous terms, so a real professional posting is never
+   silently dropped on a guess. */
+const NON_PROFESSIONAL_TITLE_HINTS = [
+  "ausbildung", "ausbilung", "minijob", "aushilfe", "lagerarbeiter", "reinigungskraft",
+  "reinigung", "kellner", "servicekraft", "bäcker", "koch/köchin", "fahrer (m/w/d)",
+  "lkw-fahrer", "quereinsteiger als", "handwerker"
+];
 
 const SENIORITY_KEYWORDS = {
   "Intern": ["intern", "internship", "working student", "trainee"],
@@ -242,7 +267,7 @@ if (typeof module !== "undefined" && module.exports) {
     WORK_MODE_OPTIONS, JOB_SEARCH_STATUS, INDUSTRY_LIST, CITY_SUGGESTIONS,
     DEALBREAKER_PRESETS, PAY_BRACKETS, CURRENCIES, PERIODS, WORK_AUTH_OPTIONS,
     FLEXIBILITY_OPTIONS, LEVELS, DOCUMENT_TYPES, ROLE_FAMILIES, ROLE_FAMILY_KEYWORDS,
-    SENIORITY_KEYWORDS, ROLE_KEYWORDS, INSTITUTION_SEED, COMPANY_SEED,
+    SENIORITY_KEYWORDS, ROLE_KEYWORDS, NON_PROFESSIONAL_TITLE_HINTS, INSTITUTION_SEED, COMPANY_SEED,
     levenshtein, normalizeAgainstList, monthsBetween, computeTotalYearsExperience,
     inferSeniority, coerceEnum, classifyRoleFamily, classifySeniority
   };

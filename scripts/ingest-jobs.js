@@ -29,9 +29,53 @@
 
 const fs = require("fs");
 const path = require("path");
-const { classifyRoleFamily, classifySeniority } = require("../taxonomies.js");
+const { classifyRoleFamily, classifySeniority, NON_PROFESSIONAL_TITLE_HINTS } = require("../taxonomies.js");
 
 const DATA_PATH = path.join(__dirname, "..", "data", "jobs.json");
+const COMPANIES_REGISTRY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "data", "registry", "companies.json"), "utf8"));
+const LOCATIONS_REGISTRY = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "data", "registry", "locations.json"), "utf8"));
+
+/* Exact-match only (case-insensitive) — no fuzzy matching here, unlike
+   the profile side's registry.js. A wrong fuzzy match silently mislabels
+   a real posting's industry; an exact-match miss just leaves it blank,
+   which is the honest outcome when ingestion can't verify something. */
+const companyIndustryByName = new Map(
+  COMPANIES_REGISTRY.filter(c => c.industry).map(c => [c.name.toLowerCase(), c.industry])
+);
+const locationByCity = new Map(LOCATIONS_REGISTRY.map(l => [l.city.toLowerCase(), l]));
+
+/* Arbeitnow (the largest free source) is Germany-heavy and gives raw
+   German city names; our locations registry uses English exonyms
+   throughout, so a handful of the common mismatches need translating
+   before the lookup above can find them. Small and explicit on purpose
+   — anything not in this list just falls through to the raw string. */
+const GERMAN_CITY_TRANSLATIONS = {
+  "münchen": "Munich", "koeln": "Cologne", "köln": "Cologne", "hannover": "Hanover",
+  "nürnberg": "Nuremberg", "wien": "Vienna", "mailand": "Milan", "rom": "Rome",
+  "genf": "Geneva", "warschau": "Warsaw", "prag": "Prague", "kopenhagen": "Copenhagen"
+};
+
+/* Best-effort: the first comma-segment of a raw location string is
+   usually the city (the rest is state/region/country, often in German
+   — "Frankfurt am Main, Hessen, Deutschland"). Translated if it's a
+   known German exonym, then matched against the curated locations
+   registry; the canonical "City, Country" form is used only on a
+   match, otherwise the (still useful, just unverified) raw city name
+   is kept as-is rather than discarded. */
+function canonicalizeLocation(raw, isRemote) {
+  if (isRemote) return "Remote";
+  const first = (raw || "").split(",")[0].trim();
+  if (!first) return "";
+  if (/^remote$|^worldwide$/i.test(first)) return "Remote";
+  const translated = GERMAN_CITY_TRANSLATIONS[first.toLowerCase()] || first;
+  const match = locationByCity.get(translated.toLowerCase());
+  return match ? match.display : translated;
+}
+
+function isNonProfessionalTitle(title) {
+  const t = (title || "").toLowerCase();
+  return NON_PROFESSIONAL_TITLE_HINTS.some(hint => t.includes(hint));
+}
 
 function mapEmploymentType(raw) {
   const t = (raw || "").toLowerCase();
@@ -105,23 +149,28 @@ const SOURCES = [
   }
 ];
 
-/* No free source here reliably provides structured salary or a clean
-   industry field — both are left unset rather than guessed. Guessing
-   "industry" from a company name, in particular, is exactly the kind
-   of fabrication this project has avoided everywhere else; a wrong
-   guess is worse than an honest blank the UI can just not filter on. */
+/* Salary is still left unset — none of these free sources reliably
+   provide structured pay data, and bucketing a guess from free text
+   is exactly the fabrication this project avoids elsewhere. Industry
+   and location, though, are now looked up against the real registries
+   (data/registry/*.json) rather than left blank across the board:
+   company_industry only fills in on an exact, case-insensitive company
+   name match (a miss stays "" — never guessed from the name), and
+   location_city is canonicalized through the curated locations list
+   with a small German-exonym translation step first. */
 function normalize(source, raw) {
   const mapped = source.map(raw);
   if (!mapped.title || !mapped.company) return null;
+  if (isNonProfessionalTitle(mapped.title)) return null;
   return {
     id: mapped.external_id,
     title: mapped.title,
     company: mapped.company,
-    company_industry: "",
+    company_industry: companyIndustryByName.get(mapped.company.toLowerCase()) || "",
     role_family: classifyRoleFamily(mapped.title),
     seniority: classifySeniority(mapped.title),
     employment_type: mapped.employment_type || "",
-    location_city: mapped.location_city || "",
+    location_city: canonicalizeLocation(mapped.location_city, mapped.work_mode === "Remote"),
     work_mode: mapped.work_mode || "",
     pay_bracket: "",
     currency: "",
@@ -169,8 +218,12 @@ async function runLive() {
   for (const source of SOURCES) {
     try {
       const raw = await fetchSource(source);
-      raw.forEach(item => results.push(normalize(source, item)));
-      console.log(`${source.name}: fetched ${raw.length} postings`);
+      let excluded = 0;
+      raw.forEach(item => {
+        const n = normalize(source, item);
+        if (n) results.push(n); else excluded++;
+      });
+      console.log(`${source.name}: fetched ${raw.length} postings, ${excluded} excluded (non-professional or missing title/company)`);
     } catch (e) {
       console.error(`${source.name}: FAILED (${e.message}) — skipping this source, continuing with the rest.`);
     }
@@ -191,7 +244,18 @@ function runTest() {
     });
   });
   console.log(`[test] normalized ${results.length} fixture postings from ${SOURCES.length} sources (no network, no disk writes):`);
-  results.forEach(r => console.log(`  - "${r.title}" @ ${r.company} -> role_family="${r.role_family || "(unclassified)"}" seniority="${r.seniority || "(unclassified)"}"`));
+  results.forEach(r => console.log(`  - "${r.title}" @ ${r.company} -> role_family="${r.role_family || "(unclassified)"}" seniority="${r.seniority || "(unclassified)"}" industry="${r.company_industry || "(none)"}" location="${r.location_city || "(none)"}"`));
+
+  const registryChecks = [
+    [results.length === 5, "expected 5 normalized postings (6 fixtures minus 1 excluded apprenticeship)"],
+    [!results.some(r => /ausbildung/i.test(r.title)), "the apprenticeship fixture must be excluded, not just unclassified"],
+    [(results.find(r => r.company === "3M") || {}).company_industry === "Industrials", "3M should get its real S&P 500 GICS sector (Industrials) from the registry"],
+    [(results.find(r => r.company === "3M") || {}).location_city === "Munich, Germany", "'München' should canonicalize to 'Munich, Germany' via the locations registry"]
+  ];
+  const registryFailed = registryChecks.filter(([ok]) => !ok);
+  registryFailed.forEach(([, msg]) => console.error("[test] FAIL — " + msg));
+  console.log(registryFailed.length ? `[test] ${registryFailed.length} registry check(s) failed.` : "[test] PASS — professional-role filter, company_industry lookup, and location canonicalization all correct.");
+  if (registryFailed.length) process.exitCode = 1;
 
   if (!results.length) { console.error("[test] FAIL — no fixtures normalized"); process.exitCode = 1; return; }
 

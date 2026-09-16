@@ -36,6 +36,22 @@ module.exports = {
       created_at: 1798761600,
       description: "Support reporting for the ops team.",
       tags: ["SQL", "Excel"], job_types: ["Full-time"]
+    },
+    {
+      // Exercises: (a) the non-professional title filter — should be
+      // dropped entirely by normalize(), not just left unclassified.
+      slug: "fixture-ausbildung-fachinformatiker", title: "Ausbildung zum Fachinformatiker (m/w/d)",
+      company_name: "Fixture GmbH", remote: false, location: "München, Bayern, Deutschland",
+      url: "https://example.com/arbeitnow/fixture-ausbildung", created_at: 1798761600,
+      description: "Vocational apprenticeship.", tags: [], job_types: ["Full-time"]
+    },
+    {
+      // Exercises: (b) company_industry lookup against a real S&P 500
+      // name, and (c) German city -> canonical English translation.
+      slug: "fixture-consultant-munich", title: "Consultant, Strategy",
+      company_name: "3M", remote: false, location: "München, Bayern, Deutschland",
+      url: "https://example.com/arbeitnow/fixture-consultant-munich", created_at: 1798761600,
+      description: "Client-facing strategy work.", tags: [], job_types: ["Full-time"]
     }
   ],
   TheMuse: [
