@@ -178,6 +178,7 @@ const filters = {
   seniority: new Set(),
   location_city: new Set(),
   work_mode: new Set(),
+  company_industry: new Set(),
   showDealbreakerConflicts: false,
   // Matching is an optional extra on top of the independent board, not a
   // dependency — off by default (and disabled outright) when there's no
@@ -187,6 +188,8 @@ const filters = {
 };
 
 let currentProfile = null;
+let viewMode = "cards"; // "cards" | "table"
+const tableSort = { key: "posted_date", dir: "desc" };
 
 function jobPassesFilters(job) {
   if (filters.search) {
@@ -197,26 +200,37 @@ function jobPassesFilters(job) {
   if (filters.seniority.size && !filters.seniority.has(job.seniority)) return false;
   if (filters.location_city.size && !filters.location_city.has(job.location_city)) return false;
   if (filters.work_mode.size && !filters.work_mode.has(job.work_mode)) return false;
+  if (filters.company_industry.size && !filters.company_industry.has(job.company_industry)) return false;
   return true;
 }
 
-function renderJobs() {
-  const list = document.getElementById("jobs-list");
-  const countEl = document.getElementById("jobs-count");
-  list.innerHTML = "";
-
+/* Shared by both views: the filtered/scored/sorted job list. The table
+   view re-sorts this by whatever column the user clicked (tableSort),
+   the card view always sorts by match score then recency — same
+   underlying data, two different lenses on it. */
+function getScoredJobs() {
   const matching = filters.matchEnabled && currentProfile;
-  const scored = JOBS
+  return JOBS
     .filter(jobPassesFilters)
     .map(job => ({ job, score: matching ? scoreJob(job, currentProfile) : null, violations: matching ? dealbreakerViolations(job, currentProfile) : [] }))
-    .filter(({ violations }) => filters.showDealbreakerConflicts || violations.length === 0)
-    .sort((a, b) => {
-      const as = a.score ? a.score.score : -1, bs = b.score ? b.score.score : -1;
-      if (as !== bs) return bs - as;
-      return new Date(b.job.posted_date) - new Date(a.job.posted_date);
-    });
+    .filter(({ violations }) => filters.showDealbreakerConflicts || violations.length === 0);
+}
 
-  countEl.textContent = `Showing ${scored.length} of ${JOBS.length} ${jobsSourceLabel}`;
+function renderJobs() {
+  const scored = getScoredJobs();
+  document.getElementById("jobs-count").textContent = `Showing ${scored.length} of ${JOBS.length} ${jobsSourceLabel}`;
+  if (viewMode === "table") renderTableView(scored); else renderCardsView(scored);
+}
+
+function renderCardsView(unsorted) {
+  const list = document.getElementById("jobs-list");
+  list.innerHTML = "";
+
+  const scored = unsorted.slice().sort((a, b) => {
+    const as = a.score ? a.score.score : -1, bs = b.score ? b.score.score : -1;
+    if (as !== bs) return bs - as;
+    return new Date(b.job.posted_date) - new Date(a.job.posted_date);
+  });
 
   if (!scored.length) {
     list.innerHTML = "<p class=\"empty-state\">No postings match these filters.</p>";
@@ -312,11 +326,106 @@ function renderJobs() {
   });
 }
 
+/* "Real tracker... like an excel sheet type" — a sortable table over the
+   same filtered data the card view shows, for scanning many postings at
+   once instead of reading one card at a time. Click a header to sort by
+   that column; click again to flip direction. */
+const TABLE_COLUMNS = [
+  { key: "title", label: "Title" },
+  { key: "company", label: "Company" },
+  { key: "company_industry", label: "Industry" },
+  { key: "role_family", label: "Role" },
+  { key: "seniority", label: "Seniority" },
+  { key: "location_city", label: "Location" },
+  { key: "work_mode", label: "Work mode" },
+  { key: "employment_type", label: "Type" },
+  { key: "posted_date", label: "Posted" },
+  { key: "source", label: "Source" }
+];
+
+function renderTableView(unsorted) {
+  const wrap = document.getElementById("jobs-table-wrap");
+  wrap.innerHTML = "";
+  if (!unsorted.length) {
+    wrap.innerHTML = "<p class=\"empty-state\">No postings match these filters.</p>";
+    return;
+  }
+
+  const sorted = unsorted.slice().sort((a, b) => {
+    const key = tableSort.key;
+    let av = a.job[key] || "", bv = b.job[key] || "";
+    let cmp;
+    if (key === "posted_date") cmp = new Date(av || 0) - new Date(bv || 0);
+    else cmp = String(av).localeCompare(String(bv));
+    return tableSort.dir === "asc" ? cmp : -cmp;
+  });
+
+  const scroll = document.createElement("div");
+  scroll.className = "jobs-table-scroll";
+  const table = document.createElement("table");
+  table.className = "jobs-table";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  TABLE_COLUMNS.forEach(col => {
+    const th = document.createElement("th");
+    th.textContent = col.label;
+    if (tableSort.key === col.key) {
+      th.classList.add("sorted");
+      th.setAttribute("data-dir", tableSort.dir === "asc" ? "▲" : "▼");
+    }
+    th.addEventListener("click", () => {
+      if (tableSort.key === col.key) tableSort.dir = tableSort.dir === "asc" ? "desc" : "asc";
+      else { tableSort.key = col.key; tableSort.dir = "asc"; }
+      renderTableView(unsorted);
+    });
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  sorted.forEach(({ job }) => {
+    const tr = document.createElement("tr");
+    TABLE_COLUMNS.forEach(col => {
+      const td = document.createElement("td");
+      if (col.key === "title") {
+        td.className = "job-title-cell";
+        if (job.source_url) {
+          const a = document.createElement("a");
+          a.href = job.source_url; a.target = "_blank"; a.rel = "noopener noreferrer";
+          a.textContent = job.title || "(untitled)";
+          td.appendChild(a);
+        } else {
+          td.textContent = job.title || "(untitled)";
+        }
+      } else {
+        td.textContent = job[col.key] || "—";
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  wrap.appendChild(scroll);
+}
+
+function setViewMode(mode) {
+  viewMode = mode;
+  document.getElementById("view-cards").className = "btn small" + (mode === "cards" ? "" : " secondary");
+  document.getElementById("view-table").className = "btn small" + (mode === "table" ? "" : " secondary");
+  document.getElementById("jobs-list").classList.toggle("hidden", mode !== "cards");
+  document.getElementById("jobs-table-wrap").classList.toggle("hidden", mode !== "table");
+  renderJobs();
+}
+
 function refreshFilterChipUI() {
   buildFilterChips(document.getElementById("filter-role"), distinctValues("role_family"), filters.role_family, onFilterChipChange);
   buildFilterChips(document.getElementById("filter-seniority"), distinctValues("seniority"), filters.seniority, onFilterChipChange);
   buildFilterChips(document.getElementById("filter-location"), distinctValues("location_city"), filters.location_city, onFilterChipChange);
   buildFilterChips(document.getElementById("filter-workmode"), distinctValues("work_mode"), filters.work_mode, onFilterChipChange);
+  buildFilterChips(document.getElementById("filter-industry"), distinctValues("company_industry"), filters.company_industry, onFilterChipChange);
 }
 function onFilterChipChange() { renderSuggestedFilters(); renderJobs(); }
 
@@ -391,12 +500,16 @@ function initFilters() {
   document.getElementById("filter-reset").addEventListener("click", () => {
     filters.search = ""; searchInput.value = "";
     filters.role_family.clear(); filters.seniority.clear(); filters.location_city.clear(); filters.work_mode.clear();
+    filters.company_industry.clear();
     filters.showDealbreakerConflicts = false; dbToggle.checked = false;
     refreshFilterChipUI();
     renderSuggestedFilters();
     renderJobs();
     toast("Filters reset.");
   });
+
+  document.getElementById("view-cards").addEventListener("click", () => setViewMode("cards"));
+  document.getElementById("view-table").addEventListener("click", () => setViewMode("table"));
 }
 
 /* Guarded: this file is also require()'d from tests/ under Node, where

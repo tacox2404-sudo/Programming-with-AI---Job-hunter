@@ -49,6 +49,12 @@
         <div class="field-label-row"><label class="main-label">Work mode</label></div>
         <div id="filter-workmode"></div>
       </div>
+      <div class="field">
+        <div class="field-label-row"><label class="main-label">Industry</label></div>
+        <p class="hint">Only postings where the company's industry could be verified show up here &mdash; most
+           free-source postings don't have this filled in yet, so this list stays short.</p>
+        <div id="filter-industry"></div>
+      </div>
 
       <label class="check-chip" style="margin-top:6px;">
         <input type="checkbox" id="filter-show-dealbreakers" /> Show postings that conflict with my dealbreakers
@@ -64,7 +70,12 @@
         <h3 style="margin:0;">Postings</h3>
         <span id="jobs-count" class="muted"></span>
       </div>
+      <div class="actions" style="margin-bottom:10px;">
+        <button id="view-cards" class="btn small">Cards</button>
+        <button id="view-table" class="btn small secondary">Table</button>
+      </div>
       <div id="jobs-list"></div>
+      <div id="jobs-table-wrap" class="hidden"></div>
     </div>
 
   </main>

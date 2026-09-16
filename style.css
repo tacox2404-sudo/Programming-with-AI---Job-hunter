@@ -151,6 +151,7 @@ textarea { resize: vertical; }
   font-size: 0.84rem;
 }
 .lean-reason[hidden] { display: none; }
+.hidden { display: none; }
 
 /* Chips / tags */
 .chip-input {
@@ -335,3 +336,14 @@ button.chip:hover { background: #e0e7ff; }
 }
 .match-score-none { background: var(--open-bg); color: var(--open); }
 .profile-status-found { color: var(--accent); font-weight: 600; }
+
+/* Job board — table ("spreadsheet") view */
+.jobs-table-scroll { overflow-x: auto; }
+.jobs-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; white-space: nowrap; }
+.jobs-table th, .jobs-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+.jobs-table th { cursor: pointer; user-select: none; background: #f8fafc; position: sticky; top: 0; }
+.jobs-table th:hover { background: #eef2ff; }
+.jobs-table th.sorted::after { content: " " attr(data-dir); font-size: 0.75em; }
+.jobs-table tbody tr:hover { background: #f8fafc; }
+.jobs-table td.job-title-cell { white-space: normal; min-width: 220px; }
+.jobs-table a { color: var(--accent); }
