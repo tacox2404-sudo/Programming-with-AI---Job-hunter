@@ -108,7 +108,12 @@ const ROLE_FAMILY_KEYWORDS = {
   "Data scientist": ["data scientist", "machine learning engineer", "ml engineer"],
   "Data analyst": ["data analyst"],
   "Product manager": ["product manager", "product owner", "produktentwickler"],
-  "Financial analyst": ["financial analyst", "finance analyst"],
+  "Financial analyst": [
+    "financial analyst", "finance analyst", "investment banking", "investment banker",
+    "ib analyst", "corporate banking", "credit analyst", "equity research",
+    "m&a analyst", "markets analyst", "trading analyst", "risk analyst", "treasury analyst",
+    "portfolio analyst", "private equity", "asset management analyst"
+  ],
   "Accountant": ["accountant", "accounting", "finanzbuchhalter", "buchhaltung", "steuerberater"],
   "Consultant": ["consultant", "consulting", "unternehmensberater", "berater"],
   "Project manager": ["project manager", "program manager", "delivery manager", "projektleiter", "projektleitung"],

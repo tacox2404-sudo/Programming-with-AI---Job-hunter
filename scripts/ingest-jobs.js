@@ -243,6 +243,85 @@ COMPANY_BOARDS.forEach(entry => {
   SOURCES.push(entry.platform === "greenhouse" ? greenhouseSource(entry) : leverSource(entry));
 });
 
+/* Workday is the dominant enterprise ATS for large banks, consulting
+   firms, and Fortune-500-scale corporates — exactly the "major banks
+   and advisories... strategy consulting... huge corporates" target,
+   which Greenhouse/Lever above structurally can't reach (those skew
+   tech/startup). A Workday career site's own search box calls a JSON
+   endpoint at /wday/cxs/{tenant}/{site}/jobs — publicly reachable, no
+   login, the exact same data any visitor sees on the page, just
+   fetched directly instead of through the rendered page. Worth being
+   precise about what this is NOT: unlike Greenhouse/Lever, Workday
+   doesn't publish this as a documented third-party API with its own
+   terms — it's the site's own frontend data endpoint. Read-only,
+   no auth bypass, nothing scraped from rendered HTML.
+
+   The hard part: three per-company unknowns (the tenant slug, the
+   data-center prefix — wd1/wd3/wd5/wd12 are all common, no way to
+   guess reliably, and the "site" path, which varies by company with
+   no fixed convention). Entries below are best-effort guesses from
+   general knowledge, NOT verified — a wrong guess just fails cleanly
+   like any other source. The reliable way to add a specific company:
+   visit its real careers page, let it redirect to
+   *.myworkdayjobs.com/en-US/<site>/..., and read tenant/dc/site
+   straight out of that URL. */
+const WORKDAY_BOARDS = [
+  { tenant: "bofa", dc: "wd1", site: "Global", company: "Bank of America" },
+  { tenant: "schwab", dc: "wd5", site: "Schwab_Careers", company: "Charles Schwab" },
+  { tenant: "visa", dc: "wd1", site: "Visa_Careers", company: "Visa" },
+  { tenant: "mastercard", dc: "wd1", site: "mastercard_careers", company: "Mastercard" },
+  { tenant: "pepsico", dc: "wd1", site: "PepsiCoCareers", company: "PepsiCo" },
+  { tenant: "nike", dc: "wd1", site: "External", company: "Nike" },
+  { tenant: "ge", dc: "wd5", site: "GE_External_Site", company: "GE" }
+];
+
+/* Workday's list endpoint gives a relative string ("Posted 3 Days
+   Ago", "Posted Today", "Posted 30+ Days Ago") instead of a real
+   date. "X Days Ago" and "Today" resolve to a real calendar date by
+   subtracting from now — that's arithmetic, not a guess. "30+ Days
+   Ago" is a range with no single correct point in it, so it's left
+   blank rather than picking an arbitrary day inside that range. */
+function parseWorkdayRelativeDate(text) {
+  const t = (text || "").toLowerCase();
+  if (/today/.test(t)) return new Date().toISOString().slice(0, 10);
+  const m = /(\d+)\s*\+?\s*day/.exec(t);
+  if (m && !t.includes("+")) {
+    const d = new Date();
+    d.setDate(d.getDate() - parseInt(m[1], 10));
+    return d.toISOString().slice(0, 10);
+  }
+  return "";
+}
+
+function workdaySource(entry) {
+  const base = `https://${entry.tenant}.${entry.dc}.myworkdayjobs.com`;
+  return {
+    name: `Workday:${entry.company}`,
+    url: `${base}/wday/cxs/${entry.tenant}/${entry.site}/jobs`,
+    method: "POST",
+    body: JSON.stringify({ appliedFacets: {}, limit: 20, offset: 0, searchText: "" }),
+    extract: body => JSON.parse(body).jobPostings || [],
+    map: item => ({
+      external_id: `workday:${entry.tenant}:${(item.bulletFields || [])[0] || item.externalPath}`,
+      title: item.title || "",
+      company: entry.company,
+      // The list endpoint doesn't include a full description (only
+      // the per-posting detail page does) — left blank rather than
+      // fetching N detail pages per company, which for a company with
+      // hundreds of postings would multiply the request count hugely.
+      location_city: item.locationsText || "",
+      work_mode: /remote/i.test(item.locationsText || "") ? "Remote" : "",
+      employment_type: "",
+      required_skills: [],
+      posted_date: parseWorkdayRelativeDate(item.postedOn),
+      source_url: base + (item.externalPath || ""),
+      description: ""
+    })
+  };
+}
+
+WORKDAY_BOARDS.forEach(entry => SOURCES.push(workdaySource(entry)));
+
 /* Salary is still left unset — none of these free sources reliably
    provide structured pay data, and bucketing a guess from free text
    is exactly the fabrication this project avoids elsewhere. Industry
@@ -280,7 +359,13 @@ function normalize(source, raw) {
 }
 
 async function fetchSource(source) {
-  const res = await fetch(source.url, { headers: { "User-Agent": "job-hunter-poc/1.0" } });
+  const init = { headers: { "User-Agent": "job-hunter-poc/1.0" } };
+  if (source.method === "POST") {
+    init.method = "POST";
+    init.headers["Content-Type"] = "application/json";
+    init.body = source.body;
+  }
+  const res = await fetch(source.url, init);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return source.extract(await res.text());
 }
@@ -385,8 +470,9 @@ function runTest() {
   console.log(`[test] normalized ${results.length} fixture postings from ${SOURCES.length} sources (no network, no disk writes):`);
   results.forEach(r => console.log(`  - "${r.title}" @ ${r.company} -> role_family="${r.role_family || "(unclassified)"}" seniority="${r.seniority || "(unclassified)"}" industry="${r.company_industry || "(none)"}" location="${r.location_city || "(none)"}"`));
 
+  const threeDaysAgo = new Date(); threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
   const registryChecks = [
-    [results.length === 7, "expected 7 normalized postings (8 fixtures minus 1 excluded apprenticeship)"],
+    [results.length === 9, "expected 9 normalized postings (10 fixtures minus 1 excluded apprenticeship)"],
     [!results.some(r => /ausbildung/i.test(r.title)), "the apprenticeship fixture must be excluded, not just unclassified"],
     [(results.find(r => r.company === "3M") || {}).company_industry === "Industrials", "3M should get its real S&P 500 GICS sector (Industrials) from the registry"],
     [(results.find(r => r.company === "3M") || {}).location_city === "Munich, Germany", "'München' should canonicalize to 'Munich, Germany' via the locations registry"],
@@ -397,7 +483,10 @@ function runTest() {
     [(results.find(r => r.company === "Stripe") || {}).source === "Greenhouse:Stripe", "Greenhouse fixture should normalize with the company name injected (the API itself doesn't provide one)"],
     [(results.find(r => r.company === "Stripe") || {}).location_city === "Remote", "Greenhouse location.name (\"Remote - US\") should canonicalize to \"Remote\" like any other remote posting"],
     [(results.find(r => r.company === "Netflix") || {}).employment_type === "Full-time", "Lever categories.commitment should map through mapEmploymentType"],
-    [(results.find(r => r.company === "Netflix") || {}).posted_date === "2027-01-01", "Lever createdAt (epoch ms) should convert to YYYY-MM-DD"]
+    [(results.find(r => r.company === "Netflix") || {}).posted_date === "2027-01-01", "Lever createdAt (epoch ms) should convert to YYYY-MM-DD"],
+    [(results.find(r => r.title === "Investment Banking Analyst") || {}).company === "Bank of America", "Workday fixture should normalize with the company name injected"],
+    [(results.find(r => r.title === "Investment Banking Analyst") || {}).posted_date === threeDaysAgo.toISOString().slice(0, 10), "Workday's relative 'Posted 3 Days Ago' should resolve to an actual date, not be left as text"],
+    [(results.find(r => r.title === "Posted 30+ days old fixture") || {}).posted_date === "", "Workday's '30+ Days Ago' is a range, not a point — must stay blank, not guessed"]
   ];
   const registryFailed = registryChecks.filter(([ok]) => !ok);
   registryFailed.forEach(([, msg]) => console.error("[test] FAIL — " + msg));

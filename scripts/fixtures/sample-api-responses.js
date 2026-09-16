@@ -80,5 +80,17 @@ module.exports = {
       hostedUrl: "https://example.com/lever/netflix/900301",
       descriptionPlain: "Improve the recommendation ranking model."
     }
+  ],
+  "Workday:Bank of America": [
+    {
+      title: "Investment Banking Analyst", bulletFields: ["R900401"],
+      locationsText: "New York, NY", postedOn: "Posted 3 Days Ago",
+      externalPath: "/job/New-York-NY/Investment-Banking-Analyst_R900401"
+    },
+    {
+      title: "Posted 30+ days old fixture", bulletFields: ["R900402"],
+      locationsText: "Remote", postedOn: "Posted 30+ Days Ago",
+      externalPath: "/job/Remote/fixture_R900402"
+    }
   ]
 };
