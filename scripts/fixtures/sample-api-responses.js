@@ -62,5 +62,23 @@ module.exports = {
       contents: "<p>Lead client workstreams.</p>",
       refs: { landing_page: "https://example.com/themuse/900101" }
     }
+  ],
+  "Greenhouse:Stripe": [
+    {
+      id: 900201, title: "Software Engineer, Payments",
+      location: { name: "Remote - US" },
+      updated_at: "2026-09-05T00:00:00Z",
+      absolute_url: "https://example.com/greenhouse/stripe/900201",
+      content: "<p>Build core payments infrastructure.</p>"
+    }
+  ],
+  "Lever:Netflix": [
+    {
+      id: "900301", text: "Data Scientist, Recommendations",
+      categories: { location: "Los Gatos, CA", commitment: "Full-time" },
+      createdAt: 1798761600000,
+      hostedUrl: "https://example.com/lever/netflix/900301",
+      descriptionPlain: "Improve the recommendation ranking model."
+    }
   ]
 };

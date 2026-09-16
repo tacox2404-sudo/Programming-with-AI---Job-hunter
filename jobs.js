@@ -63,26 +63,63 @@ function distinctValues(key) {
   return [...new Set(JOBS.map(j => j[key]).filter(Boolean))].sort();
 }
 
+/* Same chip-input pattern the Profile Builder uses (type, pick from a
+   datalist, get a removable chip) instead of pre-rendering every
+   distinct value as a checkbox — with 15-20+ options in a category
+   (locations especially), a full checkbox wall is what got called
+   "crazy" once the filters panel opened. Only real distinct values
+   from the data can be added (checked case-insensitively against
+   `options`); a typed value that doesn't match anything is just
+   ignored rather than creating a filter that matches nothing. */
+let filterTagInputSeq = 0;
 function buildFilterChips(container, options, selectedSet, onChange) {
   container.innerHTML = "";
+  const datalistId = "filter-datalist-" + (filterTagInputSeq++);
+
   const wrap = document.createElement("div");
-  wrap.className = "check-chips";
-  options.forEach(opt => {
-    const label = document.createElement("label");
-    label.className = "check-chip" + (selectedSet.has(opt) ? " checked" : "");
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = selectedSet.has(opt);
-    cb.addEventListener("change", () => {
-      if (cb.checked) selectedSet.add(opt); else selectedSet.delete(opt);
-      label.classList.toggle("checked", cb.checked);
-      onChange();
+  wrap.className = "chip-input";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.setAttribute("list", datalistId);
+  input.placeholder = options.length ? `Type to add…` : "Nothing to filter on yet";
+  wrap.appendChild(input);
+
+  const datalist = document.createElement("datalist");
+  datalist.id = datalistId;
+
+  function redraw() {
+    wrap.querySelectorAll(".chip").forEach(c => c.remove());
+    [...selectedSet].forEach(v => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = v;
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.textContent = "×";
+      rm.addEventListener("click", () => { selectedSet.delete(v); redraw(); onChange(); });
+      chip.appendChild(rm);
+      wrap.insertBefore(chip, input);
     });
-    label.appendChild(cb);
-    label.appendChild(document.createTextNode(opt));
-    wrap.appendChild(label);
+    datalist.innerHTML = "";
+    options.filter(o => !selectedSet.has(o)).forEach(o => {
+      const opt = document.createElement("option");
+      opt.value = o;
+      datalist.appendChild(opt);
+    });
+  }
+
+  function tryAdd(raw) {
+    const match = options.find(o => o.toLowerCase() === raw.trim().toLowerCase());
+    if (match && !selectedSet.has(match)) { selectedSet.add(match); input.value = ""; redraw(); onChange(); }
+  }
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && input.value.trim()) { e.preventDefault(); tryAdd(input.value); }
   });
+  input.addEventListener("change", () => { if (input.value.trim()) tryAdd(input.value); });
+
   container.appendChild(wrap);
+  container.appendChild(datalist);
+  redraw();
 }
 
 /* ---------------------------------------------------------------------

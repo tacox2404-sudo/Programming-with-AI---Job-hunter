@@ -874,6 +874,23 @@ function looksLikeDetailLine(line) {
   return /^[•\-*]\s/.test(line) || line.length > 70 || /[.!?]$/.test(line);
 }
 
+/* A CV's top block — name, phone, email, LinkedIn/portfolio URL — is
+   contact info, never a job title, company, or school. Without
+   filtering it out here it ends up as pendingLines material for
+   whatever entry comes first, polluting its title with a phone number
+   or a LinkedIn handle (the exact complaint: "it considered my header
+   as something while its just my name and linkedin and number"). */
+function looksLikeContactLine(line, isFirstContentLine) {
+  if (/@/.test(line)) return true; // email
+  if (/(linkedin\.com|github\.com|https?:\/\/|www\.)/i.test(line)) return true; // URL / social profile
+  if (/(\+?\d[\d\s().-]{7,}\d)/.test(line)) return true; // phone-number-shaped run of digits
+  // A short, plain, title-case line with no digits and nothing entry-like
+  // about it, appearing before ANY real content — almost certainly just
+  // the candidate's name at the very top of the document.
+  if (isFirstContentLine && line.split(/\s+/).length <= 5 && !/\d/.test(line) && !DATE_RANGE_RE.test(line)) return true;
+  return false;
+}
+
 function scanCvBlocks(text) {
   // Blank lines are treated as hard boundaries between entries (very common
   // in pasted CV/LinkedIn text, though PDF-extracted text often has none —
@@ -882,10 +899,13 @@ function scanCvBlocks(text) {
   const results = [];
   let current = null;
   let pendingLines = [];
+  let sawContentLine = false;
   function closeCurrent() { if (current) { results.push(current); current = null; } }
 
   rawLines.forEach(line => {
     if (!line) { closeCurrent(); pendingLines = []; return; }
+    if (looksLikeContactLine(line, !sawContentLine)) { sawContentLine = true; return; }
+    sawContentLine = true;
     const m = DATE_RANGE_RE.exec(line);
     if (m) {
       closeCurrent();

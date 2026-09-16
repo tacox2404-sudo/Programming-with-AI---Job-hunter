@@ -168,6 +168,81 @@ const SOURCES = [
   }
 ];
 
+/* Greenhouse and Lever are real, public, documented job-board APIs a
+   lot of companies use as their applicant tracking system directly —
+   not scraping, no ToS ambiguity, no HTML parsing to break when a
+   career page redesigns. The catch: coverage is entirely dependent on
+   whether a given company happens to use one of these two platforms.
+   Large consulting/finance firms mostly run their own custom career
+   portals (Workday, SuccessFactors, homegrown) instead, so this list
+   currently skews tech/startup — that's a real, honest limit, not
+   something more entries here fixes. A wrong/outdated slug just 404s
+   and is skipped, same as any other source failing; nothing here is
+   ever invented from a guess. Grow this list as more confirmed slugs
+   turn up (check https://boards.greenhouse.io/<slug> or
+   https://jobs.lever.co/<slug> resolves before adding one). */
+const COMPANY_BOARDS = [
+  { platform: "greenhouse", slug: "stripe", company: "Stripe" },
+  { platform: "greenhouse", slug: "doordash", company: "DoorDash" },
+  { platform: "greenhouse", slug: "airbnb", company: "Airbnb" },
+  { platform: "greenhouse", slug: "coinbase", company: "Coinbase" },
+  { platform: "greenhouse", slug: "robinhood", company: "Robinhood" },
+  { platform: "greenhouse", slug: "figma", company: "Figma" },
+  { platform: "greenhouse", slug: "notion", company: "Notion" },
+  { platform: "greenhouse", slug: "asana", company: "Asana" },
+  { platform: "greenhouse", slug: "gitlab", company: "GitLab" },
+  { platform: "greenhouse", slug: "affirm", company: "Affirm" },
+  { platform: "greenhouse", slug: "instacart", company: "Instacart" },
+  { platform: "greenhouse", slug: "pinterest", company: "Pinterest" },
+  { platform: "lever", slug: "netflix", company: "Netflix" },
+  { platform: "lever", slug: "box", company: "Box" },
+  { platform: "lever", slug: "plaid", company: "Plaid" }
+];
+
+function greenhouseSource(entry) {
+  return {
+    name: `Greenhouse:${entry.company}`,
+    url: `https://boards-api.greenhouse.io/v1/boards/${entry.slug}/jobs?content=true`,
+    extract: body => JSON.parse(body).jobs || [],
+    map: item => ({
+      external_id: `greenhouse:${entry.slug}:${item.id}`,
+      title: item.title || "",
+      company: entry.company,
+      location_city: (item.location || {}).name || "",
+      work_mode: /remote/i.test((item.location || {}).name || "") ? "Remote" : "",
+      employment_type: "",
+      required_skills: [],
+      posted_date: (item.updated_at || "").slice(0, 10),
+      source_url: item.absolute_url || "",
+      description: stripHtml(item.content || "").slice(0, 400)
+    })
+  };
+}
+
+function leverSource(entry) {
+  return {
+    name: `Lever:${entry.company}`,
+    url: `https://api.lever.co/v0/postings/${entry.slug}?mode=json`,
+    extract: body => JSON.parse(body) || [],
+    map: item => ({
+      external_id: `lever:${entry.slug}:${item.id}`,
+      title: item.text || "",
+      company: entry.company,
+      location_city: (item.categories || {}).location || "",
+      work_mode: /remote/i.test((item.categories || {}).location || "") ? "Remote" : "",
+      employment_type: mapEmploymentType((item.categories || {}).commitment || ""),
+      required_skills: [],
+      posted_date: item.createdAt ? new Date(item.createdAt).toISOString().slice(0, 10) : "",
+      source_url: item.hostedUrl || "",
+      description: stripHtml(item.descriptionPlain || item.description || "").slice(0, 400)
+    })
+  };
+}
+
+COMPANY_BOARDS.forEach(entry => {
+  SOURCES.push(entry.platform === "greenhouse" ? greenhouseSource(entry) : leverSource(entry));
+});
+
 /* Salary is still left unset — none of these free sources reliably
    provide structured pay data, and bucketing a guess from free text
    is exactly the fabrication this project avoids elsewhere. Industry
@@ -311,14 +386,18 @@ function runTest() {
   results.forEach(r => console.log(`  - "${r.title}" @ ${r.company} -> role_family="${r.role_family || "(unclassified)"}" seniority="${r.seniority || "(unclassified)"}" industry="${r.company_industry || "(none)"}" location="${r.location_city || "(none)"}"`));
 
   const registryChecks = [
-    [results.length === 5, "expected 5 normalized postings (6 fixtures minus 1 excluded apprenticeship)"],
+    [results.length === 7, "expected 7 normalized postings (8 fixtures minus 1 excluded apprenticeship)"],
     [!results.some(r => /ausbildung/i.test(r.title)), "the apprenticeship fixture must be excluded, not just unclassified"],
     [(results.find(r => r.company === "3M") || {}).company_industry === "Industrials", "3M should get its real S&P 500 GICS sector (Industrials) from the registry"],
     [(results.find(r => r.company === "3M") || {}).location_city === "Munich, Germany", "'München' should canonicalize to 'Munich, Germany' via the locations registry"],
     [companyIndustryByName.get("pwc") === "Consulting", "curated professional-services firms (PwC) should classify as Consulting, not GICS Industrials"],
     [companyIndustryByName.get("fti delta") === "Consulting", "a registry alias (FTI Delta -> FTI Consulting) should resolve to the parent's industry"],
     [(results.find(r => r.company === "3M") || {}).company_verified === true, "3M (a real registry company) should be flagged company_verified"],
-    [(results.find(r => r.company === "Fixture Corp") || {}).company_verified === false, "a made-up fixture company should NOT be flagged company_verified"]
+    [(results.find(r => r.company === "Fixture Corp") || {}).company_verified === false, "a made-up fixture company should NOT be flagged company_verified"],
+    [(results.find(r => r.company === "Stripe") || {}).source === "Greenhouse:Stripe", "Greenhouse fixture should normalize with the company name injected (the API itself doesn't provide one)"],
+    [(results.find(r => r.company === "Stripe") || {}).location_city === "Remote", "Greenhouse location.name (\"Remote - US\") should canonicalize to \"Remote\" like any other remote posting"],
+    [(results.find(r => r.company === "Netflix") || {}).employment_type === "Full-time", "Lever categories.commitment should map through mapEmploymentType"],
+    [(results.find(r => r.company === "Netflix") || {}).posted_date === "2027-01-01", "Lever createdAt (epoch ms) should convert to YYYY-MM-DD"]
   ];
   const registryFailed = registryChecks.filter(([ok]) => !ok);
   registryFailed.forEach(([, msg]) => console.error("[test] FAIL — " + msg));

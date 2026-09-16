@@ -8,10 +8,11 @@
 </head>
 <body>
   <header class="app-header">
+    <nav class="page-nav">
+      <span class="page-nav-current">Profile</span>
+      <a href="jobs.html" class="page-nav-link">Jobs &rarr;</a>
+    </nav>
     <div class="brand">Profile Builder</div>
-    <p class="subtitle">Structured fields where it matters, so this stays usable for filtering and matching later.
-       Free text is still there where nothing else makes sense &mdash; it just gets flagged, not silently trusted.
-       <a href="jobs.html">Browse job postings &rarr;</a></p>
   </header>
 
   <main id="app">
@@ -27,8 +28,6 @@
 
     <div class="card">
       <h3>Start from your CV</h3>
-      <p class="muted">Upload a CV and we'll pull out your experience, education, and roles automatically —
-         matched against real universities and companies, not guessed from position on the page.</p>
       <div class="actions">
         <button id="cv-upload-btn" class="btn primary">Upload CV (PDF or .txt)</button>
         <input type="file" id="cv-upload-file" accept="application/pdf,.pdf,text/plain,.txt" hidden />
@@ -50,8 +49,6 @@
       <div class="actions">
         <button id="regen-btn" class="btn secondary">Regenerate from my answers</button>
       </div>
-      <p class="summary-note">This is a template-generated draft, not real AI yet &mdash; it's a stand-in so we can
-         validate the structure before wiring up an actual model.</p>
     </div>
 
     <div class="card">
@@ -84,7 +81,6 @@
       <h3>Roles &amp; level</h3>
       <div class="field" id="field-roles">
         <div class="field-label-row"><label class="main-label">Roles</label></div>
-        <p class="hint">Job titles or functions you're targeting.</p>
       </div>
       <div class="field" id="field-levels">
         <div class="field-label-row"><label class="main-label">Level / position type</label></div>
@@ -95,7 +91,6 @@
       <h3>Desired locations &amp; availability</h3>
       <div class="field" id="field-locations">
         <div class="field-label-row"><label class="main-label">Locations you'd work in</label></div>
-        <p class="hint">Pick from the list where you can. Custom entries are flagged so you can double-check spelling.</p>
       </div>
       <div class="field" id="field-availability">
         <div class="field-label-row"><label class="main-label">Availability</label></div>
@@ -116,7 +111,6 @@
       <h3>Compensation</h3>
       <div class="field" id="field-pay">
         <div class="field-label-row"><label class="main-label">Pay floor</label></div>
-        <p class="hint">A bracket, not a raw number &mdash; keeps a mistyped digit from wrecking the data.</p>
       </div>
     </div>
 
@@ -127,7 +121,6 @@
       </div>
       <div class="field" id="field-interests">
         <div class="field-label-row"><label class="main-label">Interests</label></div>
-        <p class="hint">For a fair, human picture of you &mdash; separate from skills below.</p>
       </div>
     </div>
 
@@ -169,15 +162,12 @@
 
     <div class="card">
       <h3>Documents <span class="section-note">cover letters, drafts, and more</span></h3>
-      <p class="muted">Cover letter drafts, "why this company" answers, an achievement bank — anything an AI would
-         later draw on to write a tailored cover letter or CV. Stored as-is, not parsed.</p>
       <div id="documents-list"></div>
       <button class="btn small secondary" id="add-document">+ Add document</button>
     </div>
 
     <div class="card">
       <h3>Additional context <span class="section-note">for the AI to draw on later</span></h3>
-      <p class="muted">Anything else worth keeping on hand. Stored as-is, not parsed.</p>
       <div id="notes-list"></div>
       <button class="btn small secondary" id="add-note">+ Add a note</button>
     </div>

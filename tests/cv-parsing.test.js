@@ -78,5 +78,24 @@ check("entry 2: the detail sentence lands on entry 2, not swallowed into entry 1
 check("entry 3: company resolved (PwC), title is not the date string this bug used to produce", blocks[2] && [blocks[2].company, blocks[2].title], ["PwC", "Advisory Intern"]);
 check("entry 3: location correctly split", blocks[2] && [blocks[2].location_city, blocks[2].location_country], ["Milan", "Italy"]);
 
+// Regression test: "it considered my header as something while its just
+// my name and linkedin and number" — a real bug report. A CV's top
+// block (name, phone, email, LinkedIn URL) must never leak into the
+// first real entry's title/company/location.
+const cvWithHeader = [
+  "Riccardo Cara",
+  "linkedin.com/in/riccardocara",
+  "+39 333 123 4567",
+  "riccardo.cara@email.com",
+  "Bachelor of Science in International Economics and Management",
+  "Bocconi University",
+  "Milan, Italy",
+  "Sep 2022 - Jul 2025"
+].join("\n");
+const headerBlocks = scanCvBlocks(cvWithHeader);
+check("header block is fully excluded: exactly 1 entry, not name/contact swallowed into it", headerBlocks.length, 1);
+check("header block: title holds only the degree, no name/phone/email/URL contamination", headerBlocks[0] && headerBlocks[0].title, "Bachelor of Science in International Economics and Management");
+check("header block: institution still resolves correctly despite the header lines ahead of it", headerBlocks[0] && headerBlocks[0].institution, "Bocconi University");
+
 console.log(failures ? `\n${failures} check(s) failed.` : "\nAll checks passed.");
 if (failures) process.exitCode = 1;
