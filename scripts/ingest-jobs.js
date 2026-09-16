@@ -213,6 +213,23 @@ function mergeJobs(existing, incoming) {
   return { merged, added, updated };
 }
 
+/* "Append, never replace" (mergeJobs above) means a bad posting written
+   by an OLDER version of normalize() would otherwise sit in the file
+   forever — a classification fix only applies to postings fetched after
+   the fix ships. This re-derives the same fields from what's already on
+   disk (no network call needed, the title/company/location are already
+   stored) and drops anything that now fails the non-professional filter,
+   so every run also cleans up after its own past runs, not just itself. */
+function reclassifyExisting(job) {
+  if (isNonProfessionalTitle(job.title)) return null;
+  return Object.assign({}, job, {
+    role_family: classifyRoleFamily(job.title),
+    seniority: classifySeniority(job.title),
+    company_industry: companyIndustryByName.get((job.company || "").toLowerCase()) || job.company_industry || "",
+    location_city: canonicalizeLocation(job.location_city, job.work_mode === "Remote")
+  });
+}
+
 async function runLive() {
   const results = [];
   for (const source of SOURCES) {
@@ -228,9 +245,13 @@ async function runLive() {
       console.error(`${source.name}: FAILED (${e.message}) — skipping this source, continuing with the rest.`);
     }
   }
-  const { merged, added, updated } = mergeJobs(loadExisting(), results);
+  const rawExisting = loadExisting();
+  const existing = rawExisting.map(reclassifyExisting).filter(Boolean);
+  const staleDropped = rawExisting.length - existing.length;
+  const { merged, added, updated } = mergeJobs(existing, results);
   fs.mkdirSync(path.dirname(DATA_PATH), { recursive: true });
   fs.writeFileSync(DATA_PATH, JSON.stringify(merged, null, 2) + "\n");
+  console.log(`Reclassified ${existing.length} existing postings against current rules (${staleDropped} dropped as non-professional).`);
   console.log(`data/jobs.json: ${added} new, ${updated} refreshed, ${merged.length} total.`);
 }
 
@@ -272,6 +293,18 @@ function runTest() {
   failed.forEach(([, msg]) => console.error("[test] FAIL — " + msg));
   console.log(failed.length ? `[test] ${failed.length} check(s) failed.` : "[test] PASS — all checks passed.");
   if (failed.length) process.exitCode = 1;
+
+  const staleGoodPosting = Object.assign({}, results[0], { role_family: "", seniority: "", company_industry: "" });
+  const staleBadPosting = Object.assign({}, results[0], { id: "stale:ausbildung", title: "Ausbildung zum Fachinformatiker (m/w/d)" });
+  const reclassified = [staleGoodPosting, staleBadPosting].map(reclassifyExisting);
+  const reclassifyChecks = [
+    [reclassified[0] !== null && reclassified[0].role_family === results[0].role_family, "reclassifyExisting should re-derive role_family for a stale posting missing it"],
+    [reclassified[1] === null, "reclassifyExisting must drop a stale posting that now fails the non-professional filter, even though it was saved before the filter existed"]
+  ];
+  const reclassifyFailed = reclassifyChecks.filter(([ok]) => !ok);
+  reclassifyFailed.forEach(([, msg]) => console.error("[test] FAIL — " + msg));
+  console.log(reclassifyFailed.length ? `[test] ${reclassifyFailed.length} reclassify check(s) failed.` : "[test] PASS — reclassifyExisting refreshes and retroactively cleans stale postings.");
+  if (reclassifyFailed.length) process.exitCode = 1;
 }
 
 const args = process.argv.slice(2);
