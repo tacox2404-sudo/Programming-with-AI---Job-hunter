@@ -59,6 +59,18 @@ const LEVELS = ["Internship", "Graduate scheme / trainee", "Entry-level", "Junio
 
 const DOCUMENT_TYPES = ["Cover letter", "Resume / CV variant", "Achievement bank", "Recommendation / reference note", "Other"];
 
+/* Canonical role categories for job postings — deliberately coarser and
+   Title-Case (vs. ROLE_KEYWORDS above, which is a lowercase substring-match
+   list used only for scanning free-text CVs). Shared by the job board's
+   filters and match scoring so a posting and a candidate's stated roles
+   are always compared against the same fixed set of values. */
+const ROLE_FAMILIES = [
+  "Business analyst", "Software engineer", "Data analyst", "Data scientist",
+  "Product manager", "Marketing", "Sales", "Financial analyst", "Accountant",
+  "Consultant", "Designer", "Operations", "Project manager", "Customer success",
+  "HR / Recruiting", "Research"
+];
+
 const ROLE_KEYWORDS = [
   "software engineer", "data analyst", "data scientist", "product manager",
   "marketing", "sales", "business analyst", "financial analyst", "accountant",

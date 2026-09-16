@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Board</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">Job Board <span class="section-note">prototype</span></div>
+    <p class="subtitle">A static sample dataset for validating the categorization/filter taxonomy and profile
+       match scoring &mdash; not live job market data. <a href="index.html">&larr; Back to Profile Builder</a></p>
+  </header>
+
+  <main id="app">
+
+    <div class="card">
+      <p id="profile-status" class="muted" style="margin:0;"></p>
+    </div>
+
+    <div class="card">
+      <h3>Filters</h3>
+      <input id="job-search" type="text" placeholder="Search title, company, description…" style="margin-bottom:14px;" />
+
+      <div class="field">
+        <div class="field-label-row"><label class="main-label">Role</label></div>
+        <div id="filter-role"></div>
+      </div>
+      <div class="field">
+        <div class="field-label-row"><label class="main-label">Seniority</label></div>
+        <div id="filter-seniority"></div>
+      </div>
+      <div class="field">
+        <div class="field-label-row"><label class="main-label">Location</label></div>
+        <div id="filter-location"></div>
+      </div>
+      <div class="field">
+        <div class="field-label-row"><label class="main-label">Work mode</label></div>
+        <div id="filter-workmode"></div>
+      </div>
+
+      <label class="check-chip" style="margin-top:6px;">
+        <input type="checkbox" id="filter-show-dealbreakers" /> Show postings that conflict with my dealbreakers
+      </label>
+
+      <div class="actions">
+        <button id="filter-reset" class="btn small ghost">Reset filters</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="field-label-row">
+        <h3 style="margin:0;">Postings</h3>
+        <span id="jobs-count" class="muted"></span>
+      </div>
+      <div id="jobs-list"></div>
+    </div>
+
+  </main>
+
+  <script src="taxonomies.js"></script>
+  <script src="jobs-data.js"></script>
+  <script src="jobs.js"></script>
+</body>
+</html>
