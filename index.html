@@ -26,11 +26,17 @@
     </div>
 
     <div class="card">
-      <h3>Quick start <span class="section-note">optional</span></h3>
-      <p class="muted">Paste a CV or LinkedIn summary and we'll suggest a few roles to confirm, and keep the
-         text on hand as context for later cover letters and CVs.</p>
-      <textarea id="cv-paste" rows="4" placeholder="Paste CV text or a LinkedIn summary here (optional)"></textarea>
+      <h3>Start from your CV</h3>
+      <p class="muted">Upload a CV and we'll pull out your experience, education, and roles automatically —
+         matched against real universities and companies, not guessed from position on the page.</p>
       <div class="actions">
+        <button id="cv-upload-btn" class="btn primary">Upload CV (PDF or .txt)</button>
+        <input type="file" id="cv-upload-file" accept="application/pdf,.pdf,text/plain,.txt" hidden />
+        <button id="cv-paste-toggle" class="btn small ghost">Paste text instead</button>
+      </div>
+      <p id="cv-upload-status" class="muted" style="margin-top:8px;"></p>
+      <textarea id="cv-paste" class="hidden" rows="4" placeholder="Paste CV text or a LinkedIn summary here"></textarea>
+      <div id="cv-paste-actions" class="actions hidden">
         <button id="cv-scan-btn" class="btn secondary">Scan for suggestions</button>
       </div>
       <div id="cv-suggestions" class="suggestions hidden"></div>
@@ -193,6 +199,37 @@
 
   <script src="taxonomies.js"></script>
   <script src="registry.js"></script>
+  <script type="module">
+    /* Bridges pdf.js (an ES module, vendored locally so CV upload works
+       fully offline like the rest of this app — see vendor/pdfjs/) into
+       a plain function app.js's classic script can call. Text extraction
+       only: we read what's on the page, we don't parse layout/columns,
+       so an unusual CV template may extract out of visual order. */
+    import * as pdfjsLib from "./vendor/pdfjs/pdf.min.mjs";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "./vendor/pdfjs/pdf.worker.min.mjs";
+    window.extractPdfText = async function (file) {
+      const buf = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+      const pages = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
+        const content = await page.getTextContent();
+        // pdf.js gives a flat list of text fragments with x/y positions,
+        // not lines — group by y-coordinate (rounded) to reconstruct
+        // rough line breaks, since scanCvBlocks() depends on line
+        // structure (one entry's fields per line) to work at all.
+        const rows = new Map();
+        content.items.forEach(it => {
+          const y = Math.round(it.transform[5]);
+          if (!rows.has(y)) rows.set(y, []);
+          rows.get(y).push(it.str);
+        });
+        const lines = [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, parts]) => parts.join(" "));
+        pages.push(lines.join("\n"));
+      }
+      return pages.join("\n\n");
+    };
+  </script>
   <script src="app.js"></script>
 </body>
 </html>

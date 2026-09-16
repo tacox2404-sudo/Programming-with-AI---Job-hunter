@@ -1,5 +1,12 @@
 "use strict";
 
+/* In the browser this relies on taxonomies.js already having run as a
+   preceding <script> tag (classic-script shared global scope), for
+   levenshtein(). Under Node (tests/ only) there's no such shared scope. */
+if (typeof module !== "undefined" && module.exports) {
+  Object.assign(globalThis, require("./taxonomies.js"));
+}
+
 /* ---------------------------------------------------------------------
  * Loads the real reference datasets in data/registry/*.json and offers
  * a fuzzy-match that stays fast against the university list (10,240
@@ -104,4 +111,8 @@ function normalizeAgainstRegistry(input, list, keyFn, prefixIndex) {
   const threshold = Math.max(2, Math.round(trimmed.length * 0.3));
   if (best && bestDist <= threshold) return { canonical: keyFn(best), matched: true, entry: best };
   return { canonical: trimmed, matched: false, entry: null };
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { loadRegistry, buildPrefixIndex, normalizeAgainstRegistry, expandAbbreviations };
 }

@@ -14,6 +14,15 @@
  * for where a real model call would eventually replace the template.
  * ------------------------------------------------------------------- */
 
+/* In the browser this relies on taxonomies.js and registry.js already
+   having run as preceding <script> tags (classic-script shared global
+   scope). Under Node (tests/ only, for the CV-parsing functions) there's
+   no such shared scope. */
+if (typeof module !== "undefined" && module.exports) {
+  Object.assign(globalThis, require("./taxonomies.js"));
+  Object.assign(globalThis, require("./registry.js"));
+}
+
 const STORAGE_KEY = "jobHunterProfile.v3";
 
 function emptyProfile() {
@@ -773,11 +782,102 @@ function parseMonthYear(str) {
   return "";
 }
 
+/* Words that show up constantly in CV lines but aren't a company,
+   university, or city — matching these against the registries would be
+   a false positive waiting to happen (e.g. "Lead" at 4 characters is
+   within fuzzy-match distance of any number of unrelated 4-6 char
+   company names). Skipped before any registry lookup is even
+   attempted. Built from taxonomies already in the app, not hardcoded
+   from scratch. */
+const CV_SECTION_HEADINGS = [
+  "education", "experience", "work experience", "professional experience", "skills",
+  "projects", "certifications", "languages", "summary", "profile", "activities",
+  "extracurriculars", "extracurricular activities", "awards", "honors", "honours",
+  "references", "publications", "volunteering", "interests"
+];
+const CV_TOKEN_STOPWORDS = new Set(
+  [].concat(SENIORITY_LEVELS, EMPLOYMENT_TYPES, WORK_MODE_OPTIONS, DEGREE_TYPES, LEVELS, CV_SECTION_HEADINGS)
+    .map(s => s.toLowerCase())
+);
+
+/* Splits a block's candidate lines into structured fields by checking
+   each segment against the real registries (the same ones the rest of
+   the app uses) instead of guessing from line position. A segment that
+   matches a real university becomes the institution, one that matches
+   a real company becomes the company, one that matches a real city
+   becomes the location — whatever's left over is the title. This is
+   what actually distinguishes a city from a school from a job title;
+   the old version just concatenated every line into one blob field.
+   Exact matches are always trusted; fuzzy matches only kick in for
+   longer tokens (>=6 chars) to keep short/common words from
+   accidentally matching an unrelated registry entry. */
+function splitCvSegments(lines) {
+  const tokens = [];
+  lines.forEach(line => {
+    line.split(/[,|]| at | @ | – | — | - /i).forEach(seg => {
+      const t = seg.trim().replace(/^[-–—•*]\s*/, "").replace(/[()]/g, "").trim();
+      if (t && t.length > 1) tokens.push(t);
+    });
+  });
+
+  function registryMatch(token, list, keyFn, prefixIndex) {
+    if (!list.length) return null;
+    const lower = token.toLowerCase();
+    const exact = list.find(item => (keyFn(item) || "").toLowerCase() === lower);
+    if (exact) return exact;
+    if (token.length < 6) return null; // fuzzy only for longer, less ambiguous tokens
+    const r = normalizeAgainstRegistry(token, list, keyFn, prefixIndex);
+    return r.matched ? r.entry : null;
+  }
+
+  let institution = "", company = "", location_city = "", location_country = "";
+  const leftover = [];
+  const knownCountries = new Set(LOCATIONS.map(l => l.country.toLowerCase()));
+
+  tokens.forEach(t => {
+    if (CV_TOKEN_STOPWORDS.has(t.toLowerCase())) return;
+    if (!institution) {
+      const hit = registryMatch(t, UNIVERSITIES, u => u.name, universitiesIndex);
+      if (hit) { institution = hit.name; return; }
+    }
+    if (!company) {
+      const hit = registryMatch(t, COMPANIES, c => c.name, companiesIndex);
+      if (hit) { company = hit.name; return; }
+    }
+    if (!location_city) {
+      const hit = registryMatch(t, LOCATIONS, l => l.city, null) || registryMatch(t, LOCATIONS, l => l.display, null);
+      if (hit) { location_city = hit.city; location_country = hit.country; return; }
+    }
+    if (knownCountries.has(t.toLowerCase())) {
+      // Already covered by a city match above (e.g. "Milan" already set
+      // location_country to "Italy") — drop the redundant token instead
+      // of letting it fall through to leftover/title.
+      if (!location_country) location_country = t;
+      return;
+    }
+    leftover.push(t);
+  });
+
+  return { institution, company, location_city, location_country, title: leftover.join(", ") };
+}
+
+/* A bullet-marked line, a long sentence, or one ending in punctuation
+   reads as a description of what someone DID, not a title/org/location
+   line — those are short and unpunctuated. This distinction is what
+   lets pendingLines keep collecting the NEXT entry's header lines even
+   while a block is still open collecting the CURRENT entry's details;
+   without it, every line between two date ranges gets swallowed as the
+   first entry's details, including the second entry's own title and
+   company — which is the actual bug behind "can't tell a city from a
+   job": the block boundary, not the registry matching. */
+function looksLikeDetailLine(line) {
+  return /^[•\-*]\s/.test(line) || line.length > 70 || /[.!?]$/.test(line);
+}
+
 function scanCvBlocks(text) {
   // Blank lines are treated as hard boundaries between entries (very common
-  // in pasted CV/LinkedIn text). Lines seen before a date line are held as
-  // "pending" title/org candidates in case the date sits on its own line,
-  // rather than sharing a line with the title (both layouts are common).
+  // in pasted CV/LinkedIn text, though PDF-extracted text often has none —
+  // looksLikeDetailLine() above is what carries the real weight there).
   const rawLines = text.split(/\n/).map(l => l.trim());
   const results = [];
   let current = null;
@@ -793,13 +893,13 @@ function scanCvBlocks(text) {
       const endRaw = m[2];
       const end = /present|current|now/i.test(endRaw) ? "present" : parseMonthYear(endRaw);
       const remainder = line.replace(m[0], "").replace(/[-–—,•|]+\s*$/, "").trim();
-      const headline = pendingLines.length
-        ? pendingLines.join(" — ") + (remainder ? " — " + remainder : "")
-        : (remainder || line);
-      const isEducation = EDUCATION_HINT_RE.test(line) || pendingLines.some(l => EDUCATION_HINT_RE.test(l));
-      current = { type: isEducation ? "education" : "work", titleLine: headline, start, end, details: "" };
+      const segmentLines = remainder ? pendingLines.concat(remainder) : pendingLines;
+      const split = splitCvSegments(segmentLines);
+      const isEducation = EDUCATION_HINT_RE.test(line) || pendingLines.some(l => EDUCATION_HINT_RE.test(l)) || !!split.institution;
+      current = { type: isEducation ? "education" : "work", ...split, start, end, details: "" };
+      if (!current.title) current.title = pendingLines.join(" ") || remainder || line;
       pendingLines = [];
-    } else if (current) {
+    } else if (looksLikeDetailLine(line) && current) {
       current.details = (current.details ? current.details + " " : "") + line.replace(/^[•\-*]\s*/, "");
     } else {
       pendingLines.push(line);
@@ -813,8 +913,8 @@ function scanCvBlocks(text) {
 function addSuggestedEntry(block) {
   if (block.type === "education") {
     profile.education.push({
-      id: nextId(), institution: block.titleLine, institution_type: "", degree_type: "",
-      field_of_study: "", gpa: "", gpa_scale: "",
+      id: nextId(), institution: block.institution || block.company || block.title, institution_type: "", degree_type: "",
+      field_of_study: block.institution ? block.title : "", gpa: "", gpa_scale: "",
       start: block.start === "present" ? "" : block.start,
       end: block.end === "present" ? "" : block.end
     });
@@ -822,8 +922,8 @@ function addSuggestedEntry(block) {
     if (educationHooks) educationHooks.redraw();
   } else {
     profile.experience.push({
-      id: nextId(), title: block.titleLine, company: "", company_industry: "",
-      employment_type: "", seniority: "", location_city: "", location_country: "",
+      id: nextId(), title: block.title || block.company, company: block.company, company_industry: "",
+      employment_type: "", seniority: "", location_city: block.location_city, location_country: block.location_country,
       start: block.start === "present" ? "" : block.start,
       end: block.end === "present" ? "" : block.end,
       is_current: block.end === "present", description: block.details
@@ -834,17 +934,16 @@ function addSuggestedEntry(block) {
   refreshCompleteness();
 }
 
-function initCvScan(notesRedraw) {
-  document.getElementById("cv-scan-btn").addEventListener("click", () => {
-    const text = document.getElementById("cv-paste").value.trim();
-    if (!text) { toast("Paste something first."); return; }
+function runCvScan(text, notesRedraw) {
+    if (!text) { toast("Nothing to scan."); return; }
     const found = scanCvText(text);
     const blocks = scanCvBlocks(text).filter(b => {
-      const key = b.titleLine.trim().toLowerCase();
-      if (!key) return false;
+      const orgKey = (b.institution || b.company || "").trim().toLowerCase();
+      const titleKey = (b.title || "").trim().toLowerCase();
+      if (!orgKey && !titleKey) return false;
       return b.type === "education"
-        ? !profile.education.some(e => (e.institution || "").trim().toLowerCase() === key)
-        : !profile.experience.some(e => (e.title || "").trim().toLowerCase() === key);
+        ? !profile.education.some(e => (e.institution || "").trim().toLowerCase() === orgKey && orgKey)
+        : !profile.experience.some(e => (e.title || "").trim().toLowerCase() === titleKey && titleKey);
     });
     const box = document.getElementById("cv-suggestions");
     box.innerHTML = "";
@@ -885,12 +984,21 @@ function initCvScan(notesRedraw) {
         card.className = "entry-card";
         const strong = document.createElement("div");
         strong.style.fontWeight = "600";
-        strong.textContent = block.titleLine;
+        strong.textContent = block.title || block.institution || block.company || "(untitled)";
         const meta = document.createElement("p");
         meta.className = "muted";
         meta.style.margin = "2px 0 8px";
+        // institution/company are only ever set by splitCvSegments() on an
+        // actual registry match, never guessed — so their presence here
+        // is itself the "verified" signal, not something to compute again.
+        const org = block.institution || block.company;
+        const loc = [block.location_city, block.location_country].filter(Boolean).join(", ");
         const dateText = (block.start || block.end) ? [block.start, block.end].filter(Boolean).join(" – ") : "dates not detected";
-        meta.textContent = `Guessed as ${block.type === "education" ? "education" : "work experience"} • ${dateText}`;
+        meta.textContent = [
+          block.type === "education" ? "Education" : "Work experience",
+          org ? `${org} (verified)` : "",
+          loc, dateText
+        ].filter(Boolean).join(" • ");
         const actions = document.createElement("div");
         actions.className = "actions";
         const addBtn = document.createElement("button");
@@ -922,11 +1030,48 @@ function initCvScan(notesRedraw) {
     }
     box.classList.remove("hidden");
 
-    if (!profile.context_notes.some(n => n.label === "Pasted CV / LinkedIn text")) {
-      profile.context_notes.push({ id: nextId(), label: "Pasted CV / LinkedIn text", text });
+    if (!profile.context_notes.some(n => n.label === "CV text (uploaded or pasted)")) {
+      profile.context_notes.push({ id: nextId(), label: "CV text (uploaded or pasted)", text });
       saveProfile();
       notesRedraw();
-      toast("Also saved as a context note for later.");
+    }
+}
+
+function initCvScan(notesRedraw) {
+  document.getElementById("cv-scan-btn").addEventListener("click", () => {
+    runCvScan(document.getElementById("cv-paste").value.trim(), notesRedraw);
+  });
+
+  document.getElementById("cv-paste-toggle").addEventListener("click", () => {
+    document.getElementById("cv-paste").classList.remove("hidden");
+    document.getElementById("cv-paste-actions").classList.remove("hidden");
+    document.getElementById("cv-paste").focus();
+  });
+
+  const uploadInput = document.getElementById("cv-upload-file");
+  document.getElementById("cv-upload-btn").addEventListener("click", () => uploadInput.click());
+  uploadInput.addEventListener("change", async () => {
+    const file = uploadInput.files[0];
+    uploadInput.value = "";
+    if (!file) return;
+    const status = document.getElementById("cv-upload-status");
+    status.textContent = `Reading ${file.name}…`;
+    try {
+      let text;
+      if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+        if (!window.extractPdfText) throw new Error("PDF reader didn't load");
+        text = await window.extractPdfText(file);
+      } else {
+        text = await file.text();
+      }
+      text = text.trim();
+      if (!text) { status.textContent = `Couldn't find any text in ${file.name} — it may be a scanned image rather than a text-based PDF. Try "Paste text instead".`; return; }
+      document.getElementById("cv-paste").value = text;
+      status.textContent = `Read ${file.name} (${text.length.toLocaleString()} characters) — scanning…`;
+      runCvScan(text, notesRedraw);
+      status.textContent = `Read ${file.name} — see suggestions below.`;
+    } catch (e) {
+      status.textContent = `Couldn't read ${file.name} (${e.message}). Try "Paste text instead".`;
     }
   });
 }
@@ -1165,6 +1310,9 @@ function populateDatalists() {
   fill("company-suggestions", COMPANIES.length ? COMPANIES.map(c => c.name) : COMPANY_SEED);
 }
 
+/* Guarded: this file is also require()'d from tests/ under Node, where
+   there's no `document` to attach to and no page lifecycle to run. */
+if (typeof document !== "undefined") {
 document.addEventListener("DOMContentLoaded", () => {
   const saved = loadProfile();
   if (saved) profile = revalidateProfile(Object.assign(emptyProfile(), saved, {
@@ -1213,3 +1361,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { scanCvBlocks, splitCvSegments, looksLikeDetailLine };
+}
