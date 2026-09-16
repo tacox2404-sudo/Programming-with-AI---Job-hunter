@@ -169,7 +169,12 @@ const filters = {
   seniority: new Set(),
   location_city: new Set(),
   work_mode: new Set(),
-  showDealbreakerConflicts: false
+  showDealbreakerConflicts: false,
+  // Matching is an optional extra on top of the independent board, not a
+  // dependency — off by default (and disabled outright) when there's no
+  // profile to compare against; the postings/filters below never change
+  // shape based on this, only their score/sort/dealbreaker-warning extras.
+  matchEnabled: false
 };
 
 let currentProfile = null;
@@ -191,9 +196,10 @@ function renderJobs() {
   const countEl = document.getElementById("jobs-count");
   list.innerHTML = "";
 
+  const matching = filters.matchEnabled && currentProfile;
   const scored = JOBS
     .filter(jobPassesFilters)
-    .map(job => ({ job, score: scoreJob(job, currentProfile), violations: dealbreakerViolations(job, currentProfile) }))
+    .map(job => ({ job, score: matching ? scoreJob(job, currentProfile) : null, violations: matching ? dealbreakerViolations(job, currentProfile) : [] }))
     .filter(({ violations }) => filters.showDealbreakerConflicts || violations.length === 0)
     .sort((a, b) => {
       const as = a.score ? a.score.score : -1, bs = b.score ? b.score.score : -1;
@@ -297,14 +303,78 @@ function renderJobs() {
   });
 }
 
+function refreshFilterChipUI() {
+  buildFilterChips(document.getElementById("filter-role"), distinctValues("role_family"), filters.role_family, onFilterChipChange);
+  buildFilterChips(document.getElementById("filter-seniority"), distinctValues("seniority"), filters.seniority, onFilterChipChange);
+  buildFilterChips(document.getElementById("filter-location"), distinctValues("location_city"), filters.location_city, onFilterChipChange);
+  buildFilterChips(document.getElementById("filter-workmode"), distinctValues("work_mode"), filters.work_mode, onFilterChipChange);
+}
+function onFilterChipChange() { renderSuggestedFilters(); renderJobs(); }
+
+/* Optional, click-to-apply suggestions derived from the saved profile's
+   stated role/location preferences — only shown when matching is turned
+   on, and only for axes that already have a real filter control to apply
+   to (no industry filter UI exists yet, so industry preferences aren't
+   suggested here). Applying one just checks the matching filter chip
+   through the normal filters state, same as the user checking it by
+   hand — nothing about this bypasses or duplicates the filter logic. */
+function renderSuggestedFilters() {
+  const container = document.getElementById("suggested-filters");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!filters.matchEnabled || !currentProfile) return;
+  const prefs = currentProfile.preferences;
+  const suggestions = [];
+
+  const roleVals = distinctValues("role_family");
+  prefs.roles.value.forEach(r => {
+    const match = roleVals.find(v => v.toLowerCase() === r.trim().toLowerCase());
+    if (match && !filters.role_family.has(match)) suggestions.push({ label: `Role: ${match}`, apply: () => filters.role_family.add(match) });
+  });
+  const locVals = distinctValues("location_city");
+  prefs.locations.value.forEach(l => {
+    const ll = l.trim().toLowerCase();
+    const match = locVals.find(v => v.toLowerCase().includes(ll) || ll.includes(v.toLowerCase()));
+    if (match && !filters.location_city.has(match)) suggestions.push({ label: `Location: ${match}`, apply: () => filters.location_city.add(match) });
+  });
+
+  if (!suggestions.length) return;
+  const label = document.createElement("p");
+  label.className = "muted";
+  label.style.fontSize = "0.85rem";
+  label.style.margin = "8px 0 4px";
+  label.textContent = "Suggested filters based on your profile (click to apply):";
+  container.appendChild(label);
+  const wrap = document.createElement("div");
+  wrap.className = "check-chips";
+  suggestions.forEach(s => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip";
+    btn.textContent = "+ " + s.label;
+    btn.addEventListener("click", () => { s.apply(); refreshFilterChipUI(); renderSuggestedFilters(); renderJobs(); });
+    wrap.appendChild(btn);
+  });
+  container.appendChild(wrap);
+}
+
 function initFilters() {
   const searchInput = document.getElementById("job-search");
   searchInput.addEventListener("input", () => { filters.search = searchInput.value; renderJobs(); });
 
-  buildFilterChips(document.getElementById("filter-role"), distinctValues("role_family"), filters.role_family, renderJobs);
-  buildFilterChips(document.getElementById("filter-seniority"), distinctValues("seniority"), filters.seniority, renderJobs);
-  buildFilterChips(document.getElementById("filter-location"), distinctValues("location_city"), filters.location_city, renderJobs);
-  buildFilterChips(document.getElementById("filter-workmode"), distinctValues("work_mode"), filters.work_mode, renderJobs);
+  refreshFilterChipUI();
+
+  const matchToggle = document.getElementById("filter-match-toggle");
+  if (currentProfile) {
+    matchToggle.addEventListener("change", () => {
+      filters.matchEnabled = matchToggle.checked;
+      renderSuggestedFilters();
+      renderJobs();
+    });
+  } else {
+    matchToggle.disabled = true;
+    document.getElementById("filter-match-wrap").title = "Build a profile first to enable matching.";
+  }
 
   const dbToggle = document.getElementById("filter-show-dealbreakers");
   dbToggle.addEventListener("change", () => { filters.showDealbreakerConflicts = dbToggle.checked; renderJobs(); });
@@ -313,10 +383,8 @@ function initFilters() {
     filters.search = ""; searchInput.value = "";
     filters.role_family.clear(); filters.seniority.clear(); filters.location_city.clear(); filters.work_mode.clear();
     filters.showDealbreakerConflicts = false; dbToggle.checked = false;
-    buildFilterChips(document.getElementById("filter-role"), distinctValues("role_family"), filters.role_family, renderJobs);
-    buildFilterChips(document.getElementById("filter-seniority"), distinctValues("seniority"), filters.seniority, renderJobs);
-    buildFilterChips(document.getElementById("filter-location"), distinctValues("location_city"), filters.location_city, renderJobs);
-    buildFilterChips(document.getElementById("filter-workmode"), distinctValues("work_mode"), filters.work_mode, renderJobs);
+    refreshFilterChipUI();
+    renderSuggestedFilters();
     renderJobs();
     toast("Filters reset.");
   });
@@ -326,17 +394,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   currentProfile = loadStoredProfile();
   const banner = document.getElementById("profile-status");
   if (currentProfile) {
+    filters.matchEnabled = true;
+    document.getElementById("filter-match-toggle").checked = true;
     const roles = currentProfile.preferences.roles.value;
     banner.textContent = roles.length
-      ? `Scoring postings against your saved profile (targeting: ${roles.join(", ")}).`
-      : "Found your saved profile, but no target roles are set yet — matches will be limited.";
+      ? `Matching is on by default — scoring postings against your saved profile (targeting: ${roles.join(", ")}). Turn it off in Filters to browse independently.`
+      : "Found your saved profile, but no target roles are set yet — matches will be limited. Turn matching off in Filters to browse independently.";
     banner.classList.add("profile-status-found");
   } else {
-    banner.textContent = "No saved profile found in this browser — build one first to see match scores, or browse postings below without them.";
+    banner.textContent = "No saved profile found in this browser — build one first to enable match scores, or browse postings below without them.";
   }
 
   document.getElementById("jobs-count").textContent = "Loading postings…";
   JOBS = await loadJobs();
   initFilters();
+  renderSuggestedFilters();
   renderJobs();
 });

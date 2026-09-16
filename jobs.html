@@ -24,6 +24,15 @@
       <h3>Filters</h3>
       <input id="job-search" type="text" placeholder="Search title, company, description…" style="margin-bottom:14px;" />
 
+      <div class="field" id="match-controls" style="margin-bottom:14px;">
+        <label class="check-chip" id="filter-match-wrap">
+          <input type="checkbox" id="filter-match-toggle" /> Suggest matches from my profile <span class="section-note">extra, optional</span>
+        </label>
+        <p class="hint">Scores and sorts postings against your saved profile, and offers filter suggestions below.
+           Turn off any time to browse everything independently &mdash; the postings and filters never depend on it.</p>
+        <div id="suggested-filters"></div>
+      </div>
+
       <div class="field">
         <div class="field-label-row"><label class="main-label">Role</label></div>
         <div id="filter-role"></div>

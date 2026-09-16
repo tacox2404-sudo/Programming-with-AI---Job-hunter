@@ -173,6 +173,8 @@ textarea { resize: vertical; }
   gap: 6px;
 }
 .chip.custom { background: #fff7ed; color: #9a3412; border: 1px dashed #fb923c; }
+button.chip { border: none; cursor: pointer; font: inherit; }
+button.chip:hover { background: #e0e7ff; }
 .chip button {
   border: none; background: transparent; cursor: pointer;
   color: inherit; font-weight: 700; line-height: 1; padding: 0;
