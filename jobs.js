@@ -11,6 +11,15 @@
  * run) or is empty. See PROTOCOL.md for the full pipeline.
  * ------------------------------------------------------------------- */
 
+/* In the browser this relies on taxonomies.js already having run as a
+   preceding <script> tag (classic-script shared global scope — same
+   pattern app.js uses). Under Node (tests/ only) there's no such shared
+   scope, so pull the same constants in as globals here instead of
+   rewriting every reference below. */
+if (typeof module !== "undefined" && module.exports) {
+  Object.assign(globalThis, require("./taxonomies.js"));
+}
+
 const PROFILE_STORAGE_KEY = "jobHunterProfile.v3";
 let JOBS = [];
 let jobsSourceLabel = "";
@@ -390,24 +399,32 @@ function initFilters() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-  currentProfile = loadStoredProfile();
-  const banner = document.getElementById("profile-status");
-  if (currentProfile) {
-    filters.matchEnabled = true;
-    document.getElementById("filter-match-toggle").checked = true;
-    const roles = currentProfile.preferences.roles.value;
-    banner.textContent = roles.length
-      ? `Matching is on by default — scoring postings against your saved profile (targeting: ${roles.join(", ")}). Turn it off in Filters to browse independently.`
-      : "Found your saved profile, but no target roles are set yet — matches will be limited. Turn matching off in Filters to browse independently.";
-    banner.classList.add("profile-status-found");
-  } else {
-    banner.textContent = "No saved profile found in this browser — build one first to enable match scores, or browse postings below without them.";
-  }
+/* Guarded: this file is also require()'d from tests/ under Node, where
+   there's no `document` to attach to and no page lifecycle to run. */
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", async () => {
+    currentProfile = loadStoredProfile();
+    const banner = document.getElementById("profile-status");
+    if (currentProfile) {
+      filters.matchEnabled = true;
+      document.getElementById("filter-match-toggle").checked = true;
+      const roles = currentProfile.preferences.roles.value;
+      banner.textContent = roles.length
+        ? `Matching is on by default — scoring postings against your saved profile (targeting: ${roles.join(", ")}). Turn it off in Filters to browse independently.`
+        : "Found your saved profile, but no target roles are set yet — matches will be limited. Turn matching off in Filters to browse independently.";
+      banner.classList.add("profile-status-found");
+    } else {
+      banner.textContent = "No saved profile found in this browser — build one first to enable match scores, or browse postings below without them.";
+    }
 
-  document.getElementById("jobs-count").textContent = "Loading postings…";
-  JOBS = await loadJobs();
-  initFilters();
-  renderSuggestedFilters();
-  renderJobs();
-});
+    document.getElementById("jobs-count").textContent = "Loading postings…";
+    JOBS = await loadJobs();
+    initFilters();
+    renderSuggestedFilters();
+    renderJobs();
+  });
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { scoreJob, dealbreakerViolations, payMeetsFloor, LEVEL_TO_SENIORITY };
+}
