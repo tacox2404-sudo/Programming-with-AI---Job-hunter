@@ -3,10 +3,36 @@
 /* ---------------------------------------------------------------------
  * Job board — filters + match scoring against whatever profile.json
  * currently lives in this browser's localStorage (same storage key the
- * Profile Builder uses). Static sample data only; see jobs-data.js.
+ * Profile Builder uses).
+ *
+ * Data comes from data/jobs.json — the output of scripts/ingest-jobs.js
+ * — falling back to the hand-authored data/jobs.seed.json when that
+ * file doesn't exist yet (e.g. before the ingestion Action has ever
+ * run) or is empty. See PROTOCOL.md for the full pipeline.
  * ------------------------------------------------------------------- */
 
 const PROFILE_STORAGE_KEY = "jobHunterProfile.v3";
+let JOBS = [];
+let jobsSourceLabel = "";
+
+async function loadJobs() {
+  try {
+    const res = await fetch("data/jobs.json", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length) { jobsSourceLabel = "ingested postings"; return data; }
+    }
+  } catch (e) { /* fall through to seed */ }
+  try {
+    const res = await fetch("data/jobs.seed.json", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) { jobsSourceLabel = "sample postings"; return data; }
+    }
+  } catch (e) { /* nothing we can do */ }
+  jobsSourceLabel = "postings";
+  return [];
+}
 
 function loadStoredProfile() {
   try {
@@ -25,7 +51,7 @@ function toast(msg) {
 }
 
 function distinctValues(key) {
-  return [...new Set(SAMPLE_JOBS.map(j => j[key]))].sort();
+  return [...new Set(JOBS.map(j => j[key]).filter(Boolean))].sort();
 }
 
 function buildFilterChips(container, options, selectedSet, onChange) {
@@ -117,15 +143,18 @@ function scoreJob(job, profile) {
 }
 
 /* Only checks the dealbreaker presets that actually correspond to a
-   field this sample schema has (visa sponsorship, remote availability).
-   The rest of DEALBREAKER_PRESETS (unpaid, night shifts, commute time,
+   field this schema has (visa sponsorship, remote availability). The
+   rest of DEALBREAKER_PRESETS (unpaid, night shifts, commute time,
    rigid hours) have no matching job field here and are silently
-   skipped rather than guessed at. */
+   skipped rather than guessed at.
+   visa_sponsorship is a tri-state (true / false / null-unknown) once
+   ingested postings are in play — null means the source never said,
+   which must NOT be treated the same as an explicit "no". */
 function dealbreakerViolations(job, profile) {
   if (!profile) return [];
   const db = profile.preferences.dealbreakers.value.map(d => d.toLowerCase());
   const violations = [];
-  if (db.includes("no visa sponsorship") && !job.visa_sponsorship) violations.push("No visa sponsorship offered");
+  if (db.includes("no visa sponsorship") && job.visa_sponsorship === false) violations.push("No visa sponsorship offered");
   if (db.includes("no remote option at all") && job.work_mode === "Onsite") violations.push("Onsite only, no remote option");
   return violations;
 }
@@ -162,7 +191,7 @@ function renderJobs() {
   const countEl = document.getElementById("jobs-count");
   list.innerHTML = "";
 
-  const scored = SAMPLE_JOBS
+  const scored = JOBS
     .filter(jobPassesFilters)
     .map(job => ({ job, score: scoreJob(job, currentProfile), violations: dealbreakerViolations(job, currentProfile) }))
     .filter(({ violations }) => filters.showDealbreakerConflicts || violations.length === 0)
@@ -172,7 +201,7 @@ function renderJobs() {
       return new Date(b.job.posted_date) - new Date(a.job.posted_date);
     });
 
-  countEl.textContent = `Showing ${scored.length} of ${SAMPLE_JOBS.length} sample postings`;
+  countEl.textContent = `Showing ${scored.length} of ${JOBS.length} ${jobsSourceLabel}`;
 
   if (!scored.length) {
     list.innerHTML = "<p class=\"empty-state\">No postings match these filters.</p>";
@@ -207,13 +236,14 @@ function renderJobs() {
 
     const tagRow = document.createElement("div");
     tagRow.className = "job-tags";
-    [job.role_family, job.seniority, job.employment_type, job.company_industry, `${job.pay_bracket} ${job.currency}`].forEach(t => {
+    const payTag = job.pay_bracket ? `${job.pay_bracket}${job.currency ? " " + job.currency : ""}` : "";
+    [job.role_family, job.seniority, job.employment_type, job.company_industry, payTag].filter(Boolean).forEach(t => {
       const span = document.createElement("span");
       span.className = "chip";
       span.textContent = t;
       tagRow.appendChild(span);
     });
-    if (job.visa_sponsorship) {
+    if (job.visa_sponsorship === true) {
       const span = document.createElement("span");
       span.className = "chip";
       span.textContent = "Visa sponsorship available";
@@ -251,8 +281,17 @@ function renderJobs() {
 
     const footer = document.createElement("p");
     footer.className = "muted job-source";
-    footer.textContent = `Posted ${job.posted_date} • ${job.source}`;
+    const postedText = job.posted_date ? `Posted ${job.posted_date}` : "Posted date unknown";
+    footer.textContent = `${postedText} • ${job.source}`;
     card.appendChild(footer);
+    if (job.source_url) {
+      const link = document.createElement("a");
+      link.href = job.source_url; link.target = "_blank"; link.rel = "noopener noreferrer";
+      link.textContent = "View original posting";
+      link.className = "muted";
+      link.style.fontSize = "0.82rem";
+      card.appendChild(link);
+    }
 
     list.appendChild(card);
   });
@@ -283,7 +322,7 @@ function initFilters() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   currentProfile = loadStoredProfile();
   const banner = document.getElementById("profile-status");
   if (currentProfile) {
@@ -295,6 +334,9 @@ document.addEventListener("DOMContentLoaded", () => {
   } else {
     banner.textContent = "No saved profile found in this browser — build one first to see match scores, or browse postings below without them.";
   }
+
+  document.getElementById("jobs-count").textContent = "Loading postings…";
+  JOBS = await loadJobs();
   initFilters();
   renderJobs();
 });

@@ -9,8 +9,9 @@
 <body>
   <header class="app-header">
     <div class="brand">Job Board <span class="section-note">prototype</span></div>
-    <p class="subtitle">A static sample dataset for validating the categorization/filter taxonomy and profile
-       match scoring &mdash; not live job market data. <a href="index.html">&larr; Back to Profile Builder</a></p>
+    <p class="subtitle">Backed by <code>data/jobs.json</code>, refreshed by a scheduled ingestion pipeline
+       (see PROTOCOL.md) &mdash; falls back to a small hand-written sample set until that's run at least once.
+       <a href="index.html">&larr; Back to Profile Builder</a></p>
   </header>
 
   <main id="app">
@@ -60,7 +61,6 @@
   </main>
 
   <script src="taxonomies.js"></script>
-  <script src="jobs-data.js"></script>
   <script src="jobs.js"></script>
 </body>
 </html>

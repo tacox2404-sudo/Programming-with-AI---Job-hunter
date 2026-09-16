@@ -1056,8 +1056,50 @@ function exportProfile() {
   toast("profile.json downloaded");
 }
 
+/* Loads a previously-exported profile.json back in — the repeatable
+   "update my profile" path: re-import after editing the file elsewhere,
+   restore on a new device/browser, or bring in a profile someone else
+   built with this same tool. Deep-merges onto emptyProfile() the same
+   way the normal page-load path does, then revalidates every enum
+   field against taxonomies.js so nothing foreign or stale sneaks in.
+   Replaces the current profile outright (with confirmation) rather
+   than attempting a field-by-field merge — a partial/silent merge of
+   two different profiles is far more likely to produce a confusing
+   Frankenstein profile than a clean, explicit replace. */
+function importProfile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let incoming;
+    try { incoming = JSON.parse(reader.result); }
+    catch (e) { toast("That file isn't valid JSON — import cancelled."); return; }
+    if (!incoming || typeof incoming !== "object" || !Array.isArray(incoming.experience)) {
+      toast("Doesn't look like a profile.json from this tool — import cancelled.");
+      return;
+    }
+    if (!confirm("This replaces everything currently in the form with the imported file. Continue?")) return;
+    delete incoming.computed; // export-only, not part of the editable schema
+    profile = revalidateProfile(Object.assign(emptyProfile(), incoming, {
+      mobility: Object.assign(emptyProfile().mobility, incoming.mobility || {}),
+      links: Object.assign(emptyProfile().links, incoming.links || {}),
+      preferences: Object.assign(emptyProfile().preferences, incoming.preferences || {}),
+      background: Object.assign(emptyProfile().background, incoming.background || {})
+    }));
+    saveProfile();
+    toast("Profile imported — reloading…");
+    setTimeout(() => location.reload(), 600);
+  };
+  reader.onerror = () => toast("Couldn't read that file.");
+  reader.readAsText(file);
+}
+
 function initFooter() {
   document.getElementById("export-btn").addEventListener("click", exportProfile);
+  const importInput = document.getElementById("import-file");
+  document.getElementById("import-btn").addEventListener("click", () => importInput.click());
+  importInput.addEventListener("change", () => {
+    if (importInput.files[0]) importProfile(importInput.files[0]);
+    importInput.value = "";
+  });
   document.getElementById("restart-btn").addEventListener("click", () => {
     if (!confirm("This clears everything you've entered. Continue?")) return;
     localStorage.removeItem(STORAGE_KEY);

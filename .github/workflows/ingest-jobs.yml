@@ -1,0 +1,43 @@
+name: Ingest job postings
+
+# Runs the job ingestion pipeline (scripts/ingest-jobs.js) on a schedule
+# and commits the refreshed data/jobs.json back to the branch — this is
+# the actual "continuous update" mechanism. GitHub-hosted runners have
+# normal internet access, unlike the sandboxed Claude Code session this
+# script was written in, which is why this can't just run there.
+#
+# Manual run: use the "Run workflow" button on this workflow in the
+# Actions tab (workflow_dispatch below).
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # daily, off the hour to avoid the top-of-hour rush
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run ingestion
+        run: node scripts/ingest-jobs.js
+
+      - name: Commit updated dataset if it changed
+        run: |
+          if git diff --quiet -- data/jobs.json; then
+            echo "No changes to data/jobs.json — nothing to commit."
+            exit 0
+          fi
+          git config user.name "job-ingest-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/jobs.json
+          git commit -m "Ingest job postings ($(date -u +%Y-%m-%d))"
+          git push

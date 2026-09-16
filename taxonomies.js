@@ -71,6 +71,53 @@ const ROLE_FAMILIES = [
   "HR / Recruiting", "Research"
 ];
 
+/* Keyword → canonical-category maps used only by the job ingestion
+   script (scripts/ingest-jobs.js) to classify a raw posting's free-text
+   title into our controlled vocabularies. Checked in list order, first
+   match wins. A title that matches nothing is left "" rather than
+   guessed — an unclassified posting is still shown, just not filterable
+   on that axis, which is honest; a wrong guess would be worse. */
+const ROLE_FAMILY_KEYWORDS = {
+  "Business analyst": ["business analyst", "biz analyst"],
+  "Software engineer": ["software engineer", "backend", "front end", "frontend", "full stack", "full-stack", "swe", "developer", "programmer"],
+  "Data scientist": ["data scientist", "machine learning engineer", "ml engineer"],
+  "Data analyst": ["data analyst"],
+  "Product manager": ["product manager", "product owner"],
+  "Financial analyst": ["financial analyst", "finance analyst"],
+  "Accountant": ["accountant", "accounting"],
+  "Consultant": ["consultant", "consulting"],
+  "Project manager": ["project manager", "program manager", "delivery manager"],
+  "Customer success": ["customer success", "customer support", "account manager"],
+  "HR / Recruiting": ["recruiter", "human resources", "hr generalist", "talent acquisition"],
+  "Research": ["research analyst", "researcher", "research scientist"],
+  "Designer": ["designer", "ux ", "ui designer"],
+  "Operations": ["operations", "ops analyst", "ops manager"],
+  "Marketing": ["marketing"],
+  "Sales": ["sales", "account executive", "business development"]
+};
+
+const SENIORITY_KEYWORDS = {
+  "Intern": ["intern", "internship", "working student", "trainee"],
+  "Entry-level": ["entry level", "entry-level", "junior", "graduate", "new grad"],
+  "Senior": ["senior", "sr."],
+  "Lead": ["lead", "principal"],
+  "Director": ["director"],
+  "Executive": ["vp", "vice president", "chief ", "head of", "executive"],
+  "Manager": ["manager"],
+  "Associate": ["associate"],
+  "Mid-level": ["mid level", "mid-level"]
+};
+
+function classifyRoleFamily(title) {
+  const t = (title || "").toLowerCase();
+  return ROLE_FAMILIES.find(family => (ROLE_FAMILY_KEYWORDS[family] || []).some(k => t.includes(k))) || "";
+}
+
+function classifySeniority(title) {
+  const t = (title || "").toLowerCase();
+  return SENIORITY_LEVELS.find(level => (SENIORITY_KEYWORDS[level] || []).some(k => t.includes(k))) || "";
+}
+
 const ROLE_KEYWORDS = [
   "software engineer", "data analyst", "data scientist", "product manager",
   "marketing", "sales", "business analyst", "financial analyst", "accountant",
@@ -173,4 +220,21 @@ function inferSeniority(totalYears) {
    member instead of letting bad/foreign data land in the field. */
 function coerceEnum(value, allowed) {
   return allowed.includes(value) ? value : "";
+}
+
+/* Lets the Node-side job ingestion script (scripts/ingest-jobs.js) reuse
+   these exact vocabularies instead of maintaining a second copy. The
+   browser only ever uses the globals above via <script src="taxonomies.js">;
+   this block is a no-op there since `module` doesn't exist in that context. */
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    INSTITUTION_TYPES, DEGREE_TYPES, GPA_SCALES, EMPLOYMENT_TYPES, SENIORITY_LEVELS,
+    SKILL_CATEGORIES, PROFICIENCY_LEVELS, LANGUAGE_PROFICIENCY, COMMON_LANGUAGES,
+    WORK_MODE_OPTIONS, JOB_SEARCH_STATUS, INDUSTRY_LIST, CITY_SUGGESTIONS,
+    DEALBREAKER_PRESETS, PAY_BRACKETS, CURRENCIES, PERIODS, WORK_AUTH_OPTIONS,
+    FLEXIBILITY_OPTIONS, LEVELS, DOCUMENT_TYPES, ROLE_FAMILIES, ROLE_FAMILY_KEYWORDS,
+    SENIORITY_KEYWORDS, ROLE_KEYWORDS, INSTITUTION_SEED, COMPANY_SEED,
+    levenshtein, normalizeAgainstList, monthsBetween, computeTotalYearsExperience,
+    inferSeniority, coerceEnum, classifyRoleFamily, classifySeniority
+  };
 }
