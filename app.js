@@ -27,6 +27,7 @@ const STORAGE_KEY = "jobHunterProfile.v3";
 
 function emptyProfile() {
   return {
+    crystallized: false,
     headline: { value: "", source: "open", evidence: "" },
     story: { value: "", source: "open", evidence: "" },
     interests: [],
@@ -1298,17 +1299,173 @@ function importProfile(file) {
 }
 
 function initFooter() {
-  document.getElementById("export-btn").addEventListener("click", exportProfile);
+  document.getElementById("export-btn").addEventListener("click", (e) => { e.preventDefault(); exportProfile(); });
   const importInput = document.getElementById("import-file");
-  document.getElementById("import-btn").addEventListener("click", () => importInput.click());
+  document.getElementById("import-btn").addEventListener("click", (e) => { e.preventDefault(); importInput.click(); });
   importInput.addEventListener("change", () => {
     if (importInput.files[0]) importProfile(importInput.files[0]);
     importInput.value = "";
   });
-  document.getElementById("restart-btn").addEventListener("click", () => {
-    if (!confirm("This clears everything you've entered. Continue?")) return;
-    localStorage.removeItem(STORAGE_KEY);
-    location.reload();
+}
+
+/* ---------------------------------------------------------------------
+ * View modes: init (onboarding — CV + a few quick questions, before a
+ * profile exists) -> dashboard (the crystallized, read-only profile
+ * page, the default once built) <-> edit (the full form, reachable
+ * from the dashboard any time). "Building" a profile is a deliberate
+ * action (see build-profile-btn below), not something that happens
+ * silently — the point is a clear, one-time "this is now my actual
+ * profile" moment instead of an editor that never resolves into
+ * anything.
+ * ------------------------------------------------------------------- */
+
+let currentView = "init"; // "init" | "edit" | "dashboard"
+
+function applyViewMode() {
+  const dashboardView = document.getElementById("dashboard-view");
+  const editView = document.getElementById("edit-view");
+  const backBtn = document.getElementById("back-to-dashboard-btn");
+  const buildCard = document.getElementById("build-profile-card");
+  const nonOnboardingCards = document.querySelectorAll("#edit-view .card:not(.onboarding-card)");
+
+  if (currentView === "dashboard") {
+    renderDashboard();
+    dashboardView.classList.remove("hidden");
+    editView.classList.add("hidden");
+    return;
+  }
+
+  dashboardView.classList.add("hidden");
+  editView.classList.remove("hidden");
+  if (currentView === "edit") {
+    nonOnboardingCards.forEach(c => c.classList.remove("hidden"));
+    buildCard.classList.add("hidden");
+    backBtn.classList.toggle("hidden", !profile.crystallized);
+  } else { // "init"
+    nonOnboardingCards.forEach(c => c.classList.add("hidden"));
+    buildCard.classList.remove("hidden");
+    backBtn.classList.add("hidden");
+  }
+}
+
+function buildDashboardChipSection(host, title, values) {
+  if (!values || !values.length) return;
+  const sec = document.createElement("div");
+  sec.className = "dashboard-section";
+  const h3 = document.createElement("h3"); h3.textContent = title; sec.appendChild(h3);
+  const chips = document.createElement("div"); chips.className = "dashboard-chips";
+  values.forEach(v => {
+    const s = document.createElement("span"); s.className = "chip"; s.textContent = v; chips.appendChild(s);
+  });
+  sec.appendChild(chips);
+  host.appendChild(sec);
+}
+
+function buildDashboardEntry(title, sub, desc) {
+  const el = document.createElement("div"); el.className = "dashboard-entry";
+  const t = document.createElement("p"); t.className = "dashboard-entry-title"; t.textContent = title || "(untitled)"; el.appendChild(t);
+  if (sub) { const s = document.createElement("p"); s.className = "dashboard-entry-sub"; s.textContent = sub; el.appendChild(s); }
+  if (desc) { const d = document.createElement("p"); d.className = "dashboard-entry-desc"; d.textContent = desc; el.appendChild(d); }
+  return el;
+}
+
+function buildDashboardEntrySection(host, title, entries, renderEntry) {
+  const sec = document.createElement("div");
+  sec.className = "dashboard-section";
+  const h3 = document.createElement("h3"); h3.textContent = title; sec.appendChild(h3);
+  if (!entries.length) {
+    const empty = document.createElement("p"); empty.className = "dashboard-empty"; empty.textContent = "Nothing added yet.";
+    sec.appendChild(empty);
+  } else {
+    entries.forEach(e => sec.appendChild(renderEntry(e)));
+  }
+  host.appendChild(sec);
+}
+
+function renderDashboard() {
+  const host = document.getElementById("dashboard-view");
+  host.innerHTML = "";
+  const p = profile;
+
+  const hero = document.createElement("div");
+  hero.className = "dashboard-hero";
+
+  const h2 = document.createElement("h2");
+  h2.className = "dashboard-headline";
+  h2.textContent = p.headline.value || "Your profile";
+  hero.appendChild(h2);
+
+  const sub = document.createElement("p");
+  sub.className = "dashboard-subline";
+  const location = [p.mobility.current_city, p.mobility.current_country].filter(Boolean).join(", ");
+  sub.textContent = [location, p.mobility.work_mode, p.job_search_status].filter(Boolean).join(" • ") || "Location and status not set yet";
+  hero.appendChild(sub);
+
+  if (p.story.value) {
+    const story = document.createElement("p");
+    story.className = "dashboard-story";
+    story.textContent = p.story.value;
+    hero.appendChild(story);
+  }
+
+  const footer = document.createElement("div");
+  footer.className = "dashboard-hero-footer";
+  const pct = computeCompleteness();
+  const progress = document.createElement("div");
+  progress.className = "dashboard-progress";
+  const pctLabel = document.createElement("span");
+  pctLabel.textContent = `${pct}% complete`;
+  const bar = document.createElement("div"); bar.className = "dashboard-progress-bar";
+  const fill = document.createElement("div"); fill.className = "dashboard-progress-fill"; fill.style.width = pct + "%";
+  bar.appendChild(fill);
+  progress.appendChild(pctLabel); progress.appendChild(bar);
+  footer.appendChild(progress);
+
+  const editBtn = document.createElement("button");
+  editBtn.className = "btn secondary";
+  editBtn.textContent = "Edit profile";
+  editBtn.addEventListener("click", () => { currentView = "edit"; applyViewMode(); });
+  footer.appendChild(editBtn);
+  hero.appendChild(footer);
+  host.appendChild(hero);
+
+  buildDashboardChipSection(host, "Roles", p.preferences.roles.value);
+  buildDashboardChipSection(host, "Level", p.preferences.levels.value);
+  buildDashboardChipSection(host, "Locations", p.preferences.locations.value);
+  buildDashboardChipSection(host, "Industries", p.preferences.industries.value);
+  buildDashboardChipSection(host, "Target companies", p.preferences.companies.value);
+  buildDashboardChipSection(host, "Dealbreakers", p.preferences.dealbreakers.value);
+  buildDashboardChipSection(host, "Interests", p.interests.map(i => i.value).filter(Boolean));
+
+  buildDashboardEntrySection(host, "Experience", p.experience, e => {
+    const sub = [e.company, e.location_city, [e.start, e.is_current ? "Present" : e.end].filter(Boolean).join(" – ")].filter(Boolean).join(" • ");
+    return buildDashboardEntry(e.title, sub, e.description);
+  });
+  buildDashboardEntrySection(host, "Education", p.education, e => {
+    const subBits = [e.degree_type, e.field_of_study].filter(Boolean).join(", ");
+    const dates = [e.start, e.end].filter(Boolean).join(" – ");
+    return buildDashboardEntry(e.institution, [subBits, dates].filter(Boolean).join(" • "), "");
+  });
+  buildDashboardChipSection(host, "Skills", p.skills.map(s => s.name).filter(Boolean));
+  buildDashboardChipSection(host, "Languages", p.languages.map(l => l.language + (l.proficiency ? ` (${l.proficiency})` : "")).filter(Boolean));
+  buildDashboardChipSection(host, "Certifications", p.certifications.map(c => c.name).filter(Boolean));
+  buildDashboardEntrySection(host, "Extracurriculars", p.background.extracurriculars, e => buildDashboardEntry(e.name, e.role, e.description));
+  buildDashboardEntrySection(host, "Documents", p.documents, d => buildDashboardEntry(d.title, d.doc_type, ""));
+}
+
+function initViewSwitching() {
+  document.getElementById("build-profile-btn").addEventListener("click", () => {
+    synthesizeSummary();
+    renderSummary();
+    profile.crystallized = true;
+    saveProfile();
+    currentView = "dashboard";
+    applyViewMode();
+    toast("Profile built — this is your profile page now. Edit any time.");
+  });
+  document.getElementById("back-to-dashboard-btn").addEventListener("click", () => {
+    currentView = "dashboard";
+    applyViewMode();
   });
 }
 
@@ -1366,7 +1523,10 @@ document.addEventListener("DOMContentLoaded", () => {
   renderSummary();
   initSummary();
   initFooter();
+  initViewSwitching();
   refreshCompleteness();
+  currentView = profile.crystallized ? "dashboard" : "init";
+  applyViewMode();
 
   // Real registries load async and take a moment; the form is fully
   // usable before this resolves, it just verifies/datalist-completes

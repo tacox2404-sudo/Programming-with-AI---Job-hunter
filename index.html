@@ -17,16 +17,21 @@
 
   <main id="app">
 
-    <div class="card completeness-card">
+  <div id="dashboard-view" class="hidden"></div>
+
+  <div id="edit-view">
+
+    <div class="card completeness-card onboarding-card">
       <div class="field-label-row">
         <h3 style="margin:0;">Profile completeness</h3>
         <span id="completeness-pct" class="completeness-pct">0%</span>
       </div>
       <div class="completeness-bar"><div id="completeness-fill" class="completeness-fill"></div></div>
       <p id="completeness-hint" class="muted" style="margin-bottom:0;"></p>
+      <button id="back-to-dashboard-btn" class="btn small secondary hidden">&larr; Back to profile</button>
     </div>
 
-    <div class="card">
+    <div class="card onboarding-card">
       <h3>Start from your CV</h3>
       <div class="actions">
         <button id="cv-upload-btn" class="btn primary">Upload CV (PDF or .txt)</button>
@@ -77,7 +82,7 @@
       <select id="job-status" style="margin-top:8px;"></select>
     </div>
 
-    <div class="card">
+    <div class="card onboarding-card">
       <h3>Roles &amp; level</h3>
       <div class="field" id="field-roles">
         <div class="field-label-row"><label class="main-label">Roles</label></div>
@@ -87,7 +92,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card onboarding-card">
       <h3>Desired locations &amp; availability</h3>
       <div class="field" id="field-locations">
         <div class="field-label-row"><label class="main-label">Locations you'd work in</label></div>
@@ -95,6 +100,12 @@
       <div class="field" id="field-availability">
         <div class="field-label-row"><label class="main-label">Availability</label></div>
       </div>
+    </div>
+
+    <div class="card onboarding-card" id="build-profile-card">
+      <h3>Ready?</h3>
+      <p class="muted">You can always add more later — this just creates your profile page from what's here so far.</p>
+      <button id="build-profile-btn" class="btn primary">Build my profile &rarr;</button>
     </div>
 
     <div class="card">
@@ -172,14 +183,15 @@
       <button class="btn small secondary" id="add-note">+ Add a note</button>
     </div>
 
+  </div><!-- /edit-view -->
+
   </main>
 
-  <div class="sticky-footer">
-    <button id="export-btn" class="btn primary">Download profile.json</button>
-    <button id="import-btn" class="btn secondary">Import profile.json</button>
+  <p class="tiny-actions">
+    <a href="#" id="export-btn">Export profile.json</a> &middot;
+    <a href="#" id="import-btn">Import profile.json</a>
     <input type="file" id="import-file" accept="application/json,.json" hidden />
-    <button id="restart-btn" class="btn danger">Start over</button>
-  </div>
+  </p>
 
   <datalist id="role-suggestions"></datalist>
   <datalist id="city-suggestions"></datalist>
