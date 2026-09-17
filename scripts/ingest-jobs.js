@@ -176,27 +176,33 @@ const SOURCES = [
    Large consulting/finance firms mostly run their own custom career
    portals (Workday, SuccessFactors, homegrown) instead, so this list
    currently skews tech/startup — that's a real, honest limit, not
-   something more entries here fixes. A wrong/outdated slug just 404s
-   and is skipped, same as any other source failing; nothing here is
-   ever invented from a guess. Grow this list as more confirmed slugs
-   turn up (check https://boards.greenhouse.io/<slug> or
-   https://jobs.lever.co/<slug> resolves before adding one). */
+   something more entries here fixes.
+
+   Every entry below is LIVE-VERIFIED: confirmed via a real CI run
+   returning postings, not a guess (see the 2026-09-17 run for the
+   ones that turned out wrong: DoorDash and Notion on Greenhouse, and
+   all of Netflix/Box/Plaid on Lever, 404'd — pulled from this list
+   rather than left in as dead weight). A wrong/outdated slug 404s and
+   is skipped cleanly, same as any other source failing, so a new
+   guess here is low-risk to try — but "confirmed" in this list
+   specifically means "has produced real postings in a real run," not
+   "should work." See PROTOCOL.md's "Per-company coverage plan" for
+   the exact steps to verify a new one before adding it. */
 const COMPANY_BOARDS = [
   { platform: "greenhouse", slug: "stripe", company: "Stripe" },
-  { platform: "greenhouse", slug: "doordash", company: "DoorDash" },
   { platform: "greenhouse", slug: "airbnb", company: "Airbnb" },
   { platform: "greenhouse", slug: "coinbase", company: "Coinbase" },
   { platform: "greenhouse", slug: "robinhood", company: "Robinhood" },
   { platform: "greenhouse", slug: "figma", company: "Figma" },
-  { platform: "greenhouse", slug: "notion", company: "Notion" },
   { platform: "greenhouse", slug: "asana", company: "Asana" },
   { platform: "greenhouse", slug: "gitlab", company: "GitLab" },
   { platform: "greenhouse", slug: "affirm", company: "Affirm" },
   { platform: "greenhouse", slug: "instacart", company: "Instacart" },
-  { platform: "greenhouse", slug: "pinterest", company: "Pinterest" },
-  { platform: "lever", slug: "netflix", company: "Netflix" },
-  { platform: "lever", slug: "box", company: "Box" },
-  { platform: "lever", slug: "plaid", company: "Plaid" }
+  { platform: "greenhouse", slug: "pinterest", company: "Pinterest" }
+  /* No live-verified Lever slug yet — the three seeded guesses
+     (Netflix, Box, Plaid) all 404'd. leverSource() itself is still
+     tested via fixture below; it just has nothing real to point at
+     until a confirmed slug turns up. */
 ];
 
 function greenhouseSource(entry) {
@@ -259,21 +265,24 @@ COMPANY_BOARDS.forEach(entry => {
    The hard part: three per-company unknowns (the tenant slug, the
    data-center prefix — wd1/wd3/wd5/wd12 are all common, no way to
    guess reliably, and the "site" path, which varies by company with
-   no fixed convention). Entries below are best-effort guesses from
-   general knowledge, NOT verified — a wrong guess just fails cleanly
-   like any other source. The reliable way to add a specific company:
+   no fixed convention). The reliable way to add a specific company:
    visit its real careers page, let it redirect to
    *.myworkdayjobs.com/en-US/<site>/..., and read tenant/dc/site
-   straight out of that URL. */
-const WORKDAY_BOARDS = [
-  { tenant: "bofa", dc: "wd1", site: "Global", company: "Bank of America" },
-  { tenant: "schwab", dc: "wd5", site: "Schwab_Careers", company: "Charles Schwab" },
-  { tenant: "visa", dc: "wd1", site: "Visa_Careers", company: "Visa" },
-  { tenant: "mastercard", dc: "wd1", site: "mastercard_careers", company: "Mastercard" },
-  { tenant: "pepsico", dc: "wd1", site: "PepsiCoCareers", company: "PepsiCo" },
-  { tenant: "nike", dc: "wd1", site: "External", company: "Nike" },
-  { tenant: "ge", dc: "wd5", site: "GE_External_Site", company: "GE" }
-];
+   straight out of that URL — see PROTOCOL.md's "Per-company coverage
+   plan" for the full step-by-step.
+
+   This list starts EMPTY on purpose. The first version seeded 7
+   best-effort guesses (Bank of America, Charles Schwab, Visa,
+   Mastercard, PepsiCo, Nike, GE) from general knowledge rather than a
+   real careers-page URL — a live CI run on 2026-09-17 confirmed all 7
+   wrong (401/404/422, one per company, no pattern to learn from).
+   Guessing tenant+dc+site right by chance is close enough to zero
+   that seeding more guesses isn't a real coverage strategy; getting
+   this list populated needs someone to actually visit each target
+   company's careers page once. workdaySource() and the date-parsing
+   logic are still tested via fixture below — they're ready the moment
+   a real, confirmed entry is added. */
+const WORKDAY_BOARDS = [];
 
 /* Workday's list endpoint gives a relative string ("Posted 3 Days
    Ago", "Posted Today", "Posted 30+ Days Ago") instead of a real
@@ -460,14 +469,27 @@ async function runLive() {
 
 function runTest() {
   const fixtures = require("./fixtures/sample-api-responses.js");
+  /* Test coverage for a platform's field-mapping logic (leverSource,
+     workdaySource) is deliberately independent of whether COMPANY_BOARDS
+     / WORKDAY_BOARDS currently has a live-verified entry for that
+     platform — a mapping function shouldn't go untested just because
+     every guessed slug for it 404'd. These two are fixture-only test
+     sources; add a live-verified entry to the boards above once one
+     is confirmed, and it'll pick up automatically without needing a
+     test change. */
+  const testOnlySources = [
+    leverSource({ slug: "netflix", company: "Netflix" }),
+    workdaySource({ tenant: "bofa", dc: "wd1", site: "Global", company: "Bank of America" })
+  ];
+  const testSources = SOURCES.concat(testOnlySources);
   const results = [];
-  SOURCES.forEach(source => {
+  testSources.forEach(source => {
     (fixtures[source.name] || []).forEach(item => {
       const n = normalize(source, item);
       if (n) results.push(n);
     });
   });
-  console.log(`[test] normalized ${results.length} fixture postings from ${SOURCES.length} sources (no network, no disk writes):`);
+  console.log(`[test] normalized ${results.length} fixture postings from ${testSources.length} sources (no network, no disk writes):`);
   results.forEach(r => console.log(`  - "${r.title}" @ ${r.company} -> role_family="${r.role_family || "(unclassified)"}" seniority="${r.seniority || "(unclassified)"}" industry="${r.company_industry || "(none)"}" location="${r.location_city || "(none)"}"`));
 
   const threeDaysAgo = new Date(); threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
