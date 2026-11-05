@@ -1,0 +1,43 @@
+name: Deploy prototype to GitHub Pages
+
+# Publishes the static site (index.html, jobs.html, and everything they
+# load) as-is — no build step, matching the rest of this project. Runs on
+# every push to this working branch so the live link always reflects the
+# latest pushed state, plus manual dispatch for a one-off redeploy.
+#
+# One-time manual step required (repo owner only, GitHub blocks a
+# workflow's own token from creating a repo's Pages site for the first
+# time): Settings -> Pages -> Build and deployment -> Source: "GitHub
+# Actions". After that single click, every future push here redeploys
+# automatically, no further manual steps.
+
+on:
+  push:
+    branches: [claude/job-search-profile-builder-v2izpx]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

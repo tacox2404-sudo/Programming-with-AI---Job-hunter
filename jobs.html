@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Board</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <nav class="page-nav">
+      <a href="index.html" class="page-nav-link">&larr; Profile</a>
+      <span class="page-nav-current">Jobs</span>
+    </nav>
+    <div class="brand">Job Board</div>
+  </header>
+
+  <main id="app">
+
+    <div class="card">
+      <p id="profile-status" class="muted" style="margin:0;"></p>
+    </div>
+
+    <div class="card">
+      <input id="job-search" type="text" placeholder="Search title, company, description…" />
+      <div class="quick-filters">
+        <label class="check-chip" id="filter-verified-wrap">
+          <input type="checkbox" id="filter-verified" /> Notable companies only
+        </label>
+        <label class="check-chip" id="filter-fincon-wrap">
+          <input type="checkbox" id="filter-fincon" /> Finance &amp; Consulting
+        </label>
+      </div>
+      <details id="filters-panel">
+        <summary>More filters <span id="filters-active-count" class="filters-count hidden">0</span></summary>
+
+        <div class="field" id="match-controls">
+          <label class="check-chip" id="filter-match-wrap">
+            <input type="checkbox" id="filter-match-toggle" /> Suggest matches from my profile <span class="section-note">extra</span>
+          </label>
+          <div id="suggested-filters"></div>
+        </div>
+
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Role</label></div>
+          <div id="filter-role"></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Seniority</label></div>
+          <div id="filter-seniority"></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Location</label></div>
+          <div id="filter-location"></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Work mode</label></div>
+          <div id="filter-workmode"></div>
+        </div>
+        <div class="field">
+          <div class="field-label-row"><label class="main-label">Industry</label></div>
+          <div id="filter-industry"></div>
+        </div>
+
+        <label class="check-chip" style="margin-top:6px;">
+          <input type="checkbox" id="filter-show-dealbreakers" /> Show postings that conflict with my dealbreakers
+        </label>
+
+        <div class="actions">
+          <button id="filter-reset" class="btn small ghost">Reset filters</button>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <div class="field-label-row">
+        <h3 style="margin:0;">Postings</h3>
+        <span id="jobs-count" class="muted"></span>
+      </div>
+      <div class="actions" style="margin-bottom:10px;">
+        <button id="view-cards" class="btn small">Cards</button>
+        <button id="view-table" class="btn small secondary">Table</button>
+      </div>
+      <div id="jobs-list"></div>
+      <div id="jobs-table-wrap" class="hidden"></div>
+    </div>
+
+  </main>
+
+  <div id="job-detail-overlay" class="modal-overlay hidden">
+    <div class="modal-panel">
+      <button id="job-detail-close" class="btn small ghost modal-close">Close</button>
+      <div id="job-detail-body"></div>
+    </div>
+  </div>
+
+  <script src="taxonomies.js"></script>
+  <script src="jobs.js"></script>
+</body>
+</html>
