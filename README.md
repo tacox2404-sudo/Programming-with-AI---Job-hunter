@@ -12,6 +12,34 @@ extra on the job board — off by default behavior is identical to having no
 matching feature at all. See [PROTOCOL.md](PROTOCOL.md) for the full reasoning
 and both pipelines in detail.
 
+[![CI](https://github.com/tacox2404-sudo/job-hunter/actions/workflows/ci.yml/badge.svg)](https://github.com/tacox2404-sudo/job-hunter/actions/workflows/ci.yml)
+[![Daily ingestion](https://github.com/tacox2404-sudo/job-hunter/actions/workflows/ingest-jobs.yml/badge.svg)](https://github.com/tacox2404-sudo/job-hunter/actions/workflows/ingest-jobs.yml)
+
+## Try it live (no install)
+
+- **Job Board:** https://tacox2404-sudo.github.io/job-hunter/jobs.html
+- **Profile Builder:** https://tacox2404-sudo.github.io/job-hunter/
+
+The Job Board lists more than 15,000 real job postings collected from the public Greenhouse and Lever job-board APIs of a curated list of companies. You can search, filter (for example "Notable companies only", sector, seniority, location), and switch between card and table views. Build a profile first in the Profile Builder to see optional match scores on the board. Everything runs in your browser: your profile is stored only on your own device.
+
+## Deliverables
+
+| Deliverable | Where |
+|---|---|
+| Profile Builder web app (structured fields, CV-paste suggestions, documents, export and import of `profile.json`) | `index.html`, `app.js` |
+| Job Board web app (filters, search, optional matching against a saved profile) | `jobs.html`, `jobs.js` |
+| Automated job ingestion pipeline that refreshes the data every day | `scripts/ingest-jobs.js`, `.github/workflows/ingest-jobs.yml` |
+| Reference datasets: 10,240 universities, 3,578 companies, 128 locations | `data/registry/` |
+| Design document explaining both pipelines | [PROTOCOL.md](PROTOCOL.md) |
+| Automated tests (run on every push) | `tests/`, `.github/workflows/ci.yml` |
+
+## How to check that it works
+
+1. Open the live Job Board above and confirm that postings load and the filters change the list.
+2. Open the [Actions tab](https://github.com/tacox2404-sudo/job-hunter/actions): "Ingest job postings" runs every day and "CI" runs the tests on every push. Green means passing.
+3. Open the history of [data/jobs.json](https://github.com/tacox2404-sudo/job-hunter/commits/main/data/jobs.json) to see the automatic daily updates made by `job-ingest-bot`.
+4. Run it yourself with the steps in the next section.
+
 ## Running it locally
 
 Both pages fetch JSON at runtime (`fetch("data/...")`), which browsers block
