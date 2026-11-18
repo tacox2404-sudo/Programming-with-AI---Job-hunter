@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Secrets and local config - never commit these
+.env
+.env.*
+*.pem
+*.key
+
+# Personal data and local exports
+converted.json
+*-export.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
