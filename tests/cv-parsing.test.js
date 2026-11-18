@@ -83,10 +83,10 @@ check("entry 3: location correctly split", blocks[2] && [blocks[2].location_city
 // block (name, phone, email, LinkedIn URL) must never leak into the
 // first real entry's title/company/location.
 const cvWithHeader = [
-  "Riccardo Cara",
-  "linkedin.com/in/riccardocara",
+  "Jane Doe",
+  "linkedin.com/in/janedoe",
   "+39 333 123 4567",
-  "riccardo.cara@email.com",
+  "jane.doe@example.com",
   "Bachelor of Science in International Economics and Management",
   "Bocconi University",
   "Milan, Italy",
