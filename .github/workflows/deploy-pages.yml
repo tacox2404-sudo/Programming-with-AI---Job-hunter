@@ -13,7 +13,7 @@ name: Deploy prototype to GitHub Pages
 
 on:
   push:
-    branches: [claude/job-search-profile-builder-v2izpx]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
